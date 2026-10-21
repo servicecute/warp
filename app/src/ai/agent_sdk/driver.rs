@@ -926,7 +926,7 @@ fn split_run_options(
         .clone()
         .unwrap_or_else(|| skill_dirs.clone());
     let hook_dirs = hooks::hook_dirs(
-        hooks::hook_dirs_env_value().as_deref(),
+        hooks::hook_dirs_env_value(&env_vars).as_deref(),
         &hook_options.extra_dirs,
     );
     Ok((
@@ -1567,7 +1567,10 @@ impl AgentDriver {
             skill_dirs: parse_skills_dirs_env(),
             skill_reference_dirs: Vec::new(),
             skill_dirs_first_name_wins: false,
-            hook_dirs: hooks::hook_dirs(hooks::hook_dirs_env_value().as_deref(), &[]),
+            hook_dirs: hooks::hook_dirs(
+                hooks::hook_dirs_env_value(&HashMap::new()).as_deref(),
+                &[],
+            ),
             hook_options: hooks::HookRunOptions::default(),
             factory_repository_contract: false,
             computer_use_configured: false,
