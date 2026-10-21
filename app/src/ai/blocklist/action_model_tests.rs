@@ -372,9 +372,9 @@ mod hooks {
             });
             assert_eq!(
                 result.map(|result| result.result.clone()),
-                Some(AIAgentActionResultType::RunAgents(
-                    RunAgentsResult::Cancelled
-                ))
+                Some(AIAgentActionResultType::RunAgents(RunAgentsResult::Denied {
+                    reason: "Denied by agent hook: not that plan".to_owned(),
+                }))
             );
         });
     }
