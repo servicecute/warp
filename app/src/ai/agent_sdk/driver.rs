@@ -116,6 +116,7 @@ mod failure_output;
 pub(crate) mod git_credentials;
 pub(crate) mod harness;
 mod harness_output_monitor;
+pub(crate) mod hooks;
 pub(crate) mod mcp_startup;
 pub(super) mod output;
 mod preview_retention;
@@ -750,6 +751,8 @@ pub struct AgentDriverOptions {
     pub strict_mcp_startup: bool,
     /// MCP server startup timeout override.
     pub mcp_startup_timeout: Option<Duration>,
+    /// Agent hook settings for the run.
+    pub(crate) hooks: hooks::HookRunOptions,
 }
 
 /// Terminal setup for a new session or a pre-warmed assignment.
@@ -780,6 +783,8 @@ struct RunConfiguration {
     workspace: environment::WorkspaceConfiguration,
     skill_dirs: Vec<PathBuf>,
     skill_reference_dirs: Vec<PathBuf>,
+    hook_dirs: Vec<PathBuf>,
+    hook_options: hooks::HookRunOptions,
     computer_use_config: Option<(bool, Option<LLMId>)>,
     third_party_harness_model_config: Option<HarnessModelConfig>,
     team_scope: Option<HeadlessTeamScope>,
@@ -831,6 +836,7 @@ fn split_run_options(
         skip_initial_turn,
         strict_mcp_startup,
         mcp_startup_timeout,
+        hooks: hook_options,
     } = options;
     if !working_dir.is_absolute() {
         return Err(AgentDriverError::ConfigBuildFailed(anyhow!(
@@ -919,6 +925,10 @@ fn split_run_options(
         .definition_skill_dirs
         .clone()
         .unwrap_or_else(|| skill_dirs.clone());
+    let hook_dirs = hooks::hook_dirs(
+        hooks::hook_dirs_env_value().as_deref(),
+        &hook_options.extra_dirs,
+    );
     Ok((
         TerminalLaunchInputs {
             should_share,
@@ -945,6 +955,8 @@ fn split_run_options(
             workspace,
             skill_dirs,
             skill_reference_dirs,
+            hook_dirs,
+            hook_options,
             computer_use_config,
             third_party_harness_model_config,
             team_scope,
@@ -1057,6 +1069,9 @@ pub struct AgentDriver {
     /// Whether a skill name in an earlier `skill_dirs` entry hides the same name in later ones.
     /// Set once skill references add generated folders, which rely on folder order.
     skill_dirs_first_name_wins: bool,
+    /// Hook directories from `WARP_HOOK_DIRS` and `--hook-dir`, as written.
+    hook_dirs: Vec<PathBuf>,
+    hook_options: hooks::HookRunOptions,
     factory_repository_contract: bool,
     computer_use_configured: bool,
 
@@ -1169,6 +1184,14 @@ pub enum AgentDriverError {
     MCPServerNotFound(uuid::Uuid),
     #[error("Failed to resolve managed MCP server {uid}: {message}")]
     ManagedMcpResolutionFailed { uid: Uuid, message: String },
+    #[error(
+        "Agent hook sources could not be loaded, and the run uses the strict hook policy: {}",
+        .details.join("; ")
+    )]
+    HookSourcesUnavailable {
+        /// One line per source that could not take part in the run.
+        details: Vec<String>,
+    },
     #[error("Failed to start MCP servers: {}", .details.join("; "))]
     MCPStartupFailed {
         /// One line per unavailable server (e.g. "'datadog' failed to start:
@@ -1544,6 +1567,8 @@ impl AgentDriver {
             skill_dirs: parse_skills_dirs_env(),
             skill_reference_dirs: Vec::new(),
             skill_dirs_first_name_wins: false,
+            hook_dirs: hooks::hook_dirs(hooks::hook_dirs_env_value().as_deref(), &[]),
+            hook_options: hooks::HookRunOptions::default(),
             factory_repository_contract: false,
             computer_use_configured: false,
             snapshot_disabled: false,
@@ -1588,6 +1613,8 @@ impl AgentDriver {
             workspace,
             skill_dirs,
             skill_reference_dirs,
+            hook_dirs,
+            hook_options,
             computer_use_config,
             third_party_harness_model_config,
             team_scope,
@@ -1626,6 +1653,8 @@ impl AgentDriver {
         self.skill_dirs = skill_dirs;
         self.skill_reference_dirs = skill_reference_dirs;
         self.skill_dirs_first_name_wins = false;
+        self.hook_dirs = hook_dirs;
+        self.hook_options = hook_options;
         self.third_party_harness_model_config = third_party_harness_model_config;
         self.team_scope = team_scope;
         self.bedrock_oidc_credentials = bedrock_oidc_credentials;
@@ -2422,7 +2451,7 @@ impl AgentDriver {
                 );
             }
 
-            // Skill loading is Oz-only; third-party harnesses have their own skill systems.
+            // Skill and hook loading are Oz-only; third-party harnesses have their own.
             if matches!(&task.harness, HarnessKind::Oz) {
                 // Load skills from repos synchronously so the initial message includes them.
                 // File trees are ready after prepare_environment and global skill repo cloning above.
@@ -2436,6 +2465,7 @@ impl AgentDriver {
                 if factory_repository_contract {
                     agent_setup::load_factory_deferred_repositories_skill(&foreground).await;
                 }
+                agent_setup::load_hook_sources(&foreground).await?;
             }
 
             let (
@@ -3795,6 +3825,11 @@ impl AgentDriver {
         task_prompt: AgentRunPrompt,
         ctx: &mut ModelContext<Self>,
     ) -> Receiver<SDKConversationOutputStatus> {
+        // An Oz run's first prompt is resolved server-side, so no prompt hook marks the start of
+        // the run on the client; the hook set is pinned here instead, before any request.
+        self.pin_hooks_for_run(ctx);
+        self.subscribe_to_hook_runtime_events(ctx);
+
         // Create a oneshot channel to signal task completion. This is `run_exit`'s
         // internal signal, not the receiver returned to the caller: see the
         // `internal_rx` wiring at the end of this function for why.
