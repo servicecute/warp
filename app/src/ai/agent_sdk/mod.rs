@@ -754,12 +754,13 @@ fn build_execution_task_and_options(
             workspace.definition_skill_dirs = Some(definition_skill_dirs);
             workspace
         },
-        computer_use_config: (selected_harness == Harness::Oz).then(|| {
-            (
-                config.computer_use_enabled,
-                config.computer_use_model_id.map(Into::into),
-            )
-        }),
+        computer_use_config: Some((
+            config.computer_use_enabled,
+            config
+                .computer_use_model_id
+                .filter(|_| selected_harness == Harness::Oz)
+                .map(Into::into),
+        )),
         selected_harness,
         harness_transport,
         harness_transport_fallback: None,

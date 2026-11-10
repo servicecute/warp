@@ -602,8 +602,7 @@ async fn prepare(
         environment_variables: config.environment_variables,
         workspace,
         cloud_providers,
-        computer_use_config: (harness == Harness::Oz)
-            .then_some((preparation.computer_use_enabled, None)),
+        computer_use_config: Some((preparation.computer_use_enabled, None)),
         selected_harness: harness,
         ..Default::default()
     };

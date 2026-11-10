@@ -93,6 +93,8 @@ fn assert_third_party_assignment(
         configuration.harness = server_harness;
         configuration.model_id = Some("assigned-model".into());
         configuration.factory_skill_dirs = vec![".agents/skills".into()];
+        configuration.computer_use_enabled = true;
+        configuration.computer_use_model_id = Some("computer-use-model".into());
         let runtime_env = HashMap::from([
             ("WARP_HARNESS_TRANSPORT".into(), transport_name),
             ("WARP_API_KEY".into(), "run-key".into()),
@@ -124,7 +126,9 @@ fn assert_third_party_assignment(
             transport == HarnessTransport::Pty
         );
         assert_eq!(options.harness_transport, transport);
-        assert!(options.computer_use_config.is_none());
+        // Third-party harnesses get computer use through the computer use MCP server, which
+        // the harness's own model drives, so only the enablement carries over.
+        assert_eq!(options.computer_use_config, Some((true, None)));
         options.environment_variables = runtime_env;
         options.secrets.insert(
             "HARNESS_SECRET".into(),
