@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+#
+# Build and install the ServiceCute Warp OSS release bundle on macOS.
+#
+# This deliberately uses Warp's existing OSS channel identity so the custom
+# build has its own application profile and does not share stable Warp's data.
+# The installed application is /Applications/WarpOss.app by default.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_DIR="${WARP_CUSTOM_INSTALL_DIR:-/Applications}"
+APP_NAME="WarpOss"
+INSTALL_APP_PATH="${INSTALL_DIR}/${APP_NAME}.app"
+INSTALL=true
+FORCE=false
+OPEN=false
+
+usage() {
+  cat <<'EOF'
+Build and install the custom Warp release app.
+
+Usage:
+  ./script/build-custom-release [options]
+
+Options:
+  --install-dir DIR  Install into DIR instead of /Applications
+  --no-install       Build the app bundle without copying it into Applications
+  --force            Replace an existing WarpOss.app without prompting
+  --open             Open the installed app when the build completes
+  -h, --help         Show this help
+
+Environment:
+  WARP_CUSTOM_INSTALL_DIR  Default installation directory
+
+The app is built as WarpOss.app with bundle identifier dev.warp.WarpOss. It
+uses a separate WarpOss data profile from the installed stable Warp app.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --install-dir)
+      if [[ $# -lt 2 || "$2" == -* ]]; then
+        echo "error: --install-dir requires a directory" >&2
+        exit 2
+      fi
+      INSTALL_DIR="$2"
+      INSTALL_APP_PATH="${INSTALL_DIR}/${APP_NAME}.app"
+      shift 2
+      ;;
+    --no-install)
+      INSTALL=false
+      shift
+      ;;
+    --force)
+      FORCE=true
+      shift
+      ;;
+    --open)
+      OPEN=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown option '$1'" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "error: this workflow currently supports macOS only" >&2
+  exit 1
+fi
+
+cd "$REPO_ROOT"
+
+# Force the OSS binary even when the internal warp-channel-config command is
+# installed. This prevents an internal/local channel build from being
+# installed under the custom release workflow.
+export WARP_BIN_NAME="warp-oss"
+export WARP_CHANNEL="oss"
+export FEATURES="gui"
+export WARP_SKIP_COMMON_SKILLS_INSTALL=1
+
+echo "Building ${APP_NAME}.app from the current checkout..."
+./script/macos/run --release --dont-open
+
+TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | jq -r .target_directory)"
+SOURCE_APP="${TARGET_DIR}/release/bundle/osx/${APP_NAME}.app"
+
+if [[ ! -d "$SOURCE_APP" ]]; then
+  echo "error: expected app bundle was not produced: $SOURCE_APP" >&2
+  exit 1
+fi
+
+if [[ "$INSTALL" == true ]]; then
+  if [[ -e "$INSTALL_APP_PATH" ]]; then
+    if [[ "$FORCE" != true ]]; then
+      if [[ ! -t 0 ]]; then
+        echo "error: $INSTALL_APP_PATH already exists; rerun with --force" >&2
+        exit 1
+      fi
+      read -r -p "Replace $INSTALL_APP_PATH? [y/N] " answer
+      if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled."
+        exit 0
+      fi
+    fi
+    rm -rf -- "$INSTALL_APP_PATH"
+  fi
+
+  mkdir -p "$INSTALL_DIR"
+  ditto "$SOURCE_APP" "$INSTALL_APP_PATH"
+  echo "Installed $INSTALL_APP_PATH"
+
+  if [[ "$OPEN" == true ]]; then
+    open "$INSTALL_APP_PATH"
+  fi
+else
+  echo "Built $SOURCE_APP"
+fi
