@@ -221,6 +221,13 @@ pub struct Language {
     pub symbols_query: Option<Query>,
     /// Display name for the language.
     pub display_name: String,
+    /// Languages embedded in the source that need a secondary parser.
+    pub embedded_languages: Vec<EmbeddedLanguage>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmbeddedLanguage {
+    Css,
 }
 
 impl Language {
@@ -339,6 +346,11 @@ fn load_language(lang: &str) -> Option<Language> {
         bracket_pairs,
         symbols_query,
         display_name: config.display_name,
+        embedded_languages: if lang == "mjml" {
+            vec![EmbeddedLanguage::Css]
+        } else {
+            Vec::new()
+        },
     })
 }
 

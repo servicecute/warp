@@ -76,6 +76,57 @@ impl HighlightQuery {
 
         range_map
     }
+
+    pub fn get_highlighted_chunks_from_text(
+        &self,
+        query: &Query,
+        embedded_text: &str,
+        source_text: &str,
+        source_byte_offset: usize,
+        tree: &Tree,
+    ) -> RangeMap<CharOffset, ColorU> {
+        let mut range_map = RangeMap::new();
+        let mut cursor = QueryCursor::new();
+        let mut captures =
+            cursor.captures(query, tree.root_node(), TextSlice(embedded_text.as_bytes()));
+
+        while let Some(matches) = captures.next() {
+            for cap in matches.0.captures {
+                let insertion_range = cap.node.byte_range();
+                let global_start = source_byte_offset + insertion_range.start;
+                let global_end = source_byte_offset + insertion_range.end;
+                let Some(color) = self
+                    .highlight_map
+                    .get(cap.index as usize)
+                    .and_then(|inner| *inner)
+                else {
+                    continue;
+                };
+                let Some(char_start) = source_text
+                    .get(..global_start)
+                    .map(str::chars)
+                    .map(Iterator::count)
+                else {
+                    continue;
+                };
+                let Some(char_end) = source_text
+                    .get(..global_end)
+                    .map(str::chars)
+                    .map(Iterator::count)
+                else {
+                    continue;
+                };
+                if char_start < char_end {
+                    range_map.insert(
+                        CharOffset::from(char_start)..CharOffset::from(char_end),
+                        color,
+                    );
+                }
+            }
+        }
+
+        range_map
+    }
 }
 
 fn convert_capture_name_to_color(name: &str, color_map: &ColorMap) -> Option<ColorU> {
