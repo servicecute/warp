@@ -121,6 +121,53 @@ fn mjml_standard_fixture_has_html_highlight_captures() {
     );
 }
 
+#[test]
+fn handlebars_extensions_resolve_to_handlebars() {
+    for filename in ["email.hbs", "email.handlebars"] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to Handlebars"));
+        assert_eq!(language.display_name(), "Handlebars");
+    }
+}
+
+#[test]
+fn json_handlebars_extensions_resolve_to_json_handlebars() {
+    for filename in ["email.json.hbs", "email.json.handlebars"] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to JSON Handlebars"));
+        assert_eq!(language.display_name(), "Handlebars JSON");
+    }
+}
+
+#[test]
+fn handlebars_fixtures_load_and_parse() {
+    for (language_name, fixture_path) in [
+        ("handlebars", "../grammars/handlebars/standard_fixture.hbs"),
+        (
+            "handlebars-json",
+            "../grammars/handlebars/standard_fixture.json.hbs",
+        ),
+    ] {
+        let language = load_language(language_name).expect("Handlebars language should load");
+        let fixture = include_str!("../grammars/handlebars/standard_fixture.hbs");
+        let fixture = if fixture_path.ends_with("json.hbs") {
+            include_str!("../grammars/handlebars/standard_fixture.json.hbs")
+        } else {
+            fixture
+        };
+        let mut parser = arborium::tree_sitter::Parser::new();
+        parser
+            .set_language(&language.grammar)
+            .expect("Handlebars host grammar should be compatible");
+        let tree = parser.parse(fixture, None).expect("fixture should parse");
+        assert_eq!(tree.root_node().byte_range(), 0..fixture.len());
+    }
+}
+
 /// `.command` is the macOS convention for double-clickable shell scripts.
 /// Make sure `language_by_filename` recognizes it as shell so the editor
 /// renders syntax highlighting instead of the

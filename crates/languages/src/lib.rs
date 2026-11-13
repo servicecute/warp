@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 36] = [
+pub const SUPPORTED_LANGUAGES: [&str; 38] = [
     "rust",
     "golang",
     "yaml",
@@ -33,6 +33,8 @@ pub const SUPPORTED_LANGUAGES: [&str; 36] = [
     "csharp",
     "html",
     "mjml",
+    "handlebars",
+    "handlebars-json",
     "css",
     "c",
     "json",
@@ -132,6 +134,13 @@ fn language_by_filename_parts(
     filename: Option<&str>,
     extension: Option<&str>,
 ) -> Option<Arc<Language>> {
+    if let Some(filename) = filename {
+        let lower = filename.to_ascii_lowercase();
+        if lower.ends_with(".json.hbs") || lower.ends_with(".json.handlebars") {
+            return language_by_name("handlebars-json");
+        }
+    }
+
     // First check for specific filenames that don't use extensions.
     if let Some(filename) = filename {
         match filename {
@@ -176,6 +185,7 @@ fn language_by_filename_parts(
         "cs" => language_by_name("csharp"),
         "html" | "htm" => language_by_name("html"),
         "mjml" => language_by_name("mjml"),
+        "hbs" | "handlebars" => language_by_name("handlebars"),
         "css" => language_by_name("css"),
         "c" => language_by_name("c"),
         "json" => language_by_name("json"),
@@ -228,6 +238,7 @@ pub struct Language {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmbeddedLanguage {
     Css,
+    Handlebars,
 }
 
 impl Language {
@@ -260,6 +271,8 @@ fn to_arborium_name(lang: &str) -> &str {
         "csharp" => "c-sharp",
         "jsx" => "javascript",
         "mjml" => "html",
+        "handlebars" => "html",
+        "handlebars-json" => "json",
         "objective-c" => "objc",
         "sql" => "sql",
         other => other,
@@ -283,6 +296,8 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "csharp" => Some(arborium::lang_c_sharp::HIGHLIGHTS_QUERY),
         "html" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
         "mjml" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "handlebars" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "handlebars-json" => Some(arborium::lang_json::HIGHLIGHTS_QUERY),
         "css" => Some(arborium::lang_css::HIGHLIGHTS_QUERY),
         "c" => Some(arborium::lang_c::HIGHLIGHTS_QUERY),
         "json" => Some(arborium::lang_json::HIGHLIGHTS_QUERY),
@@ -346,10 +361,12 @@ fn load_language(lang: &str) -> Option<Language> {
         bracket_pairs,
         symbols_query,
         display_name: config.display_name,
-        embedded_languages: if lang == "mjml" {
-            vec![EmbeddedLanguage::Css]
-        } else {
-            Vec::new()
+        embedded_languages: match lang {
+            "mjml" => vec![EmbeddedLanguage::Css, EmbeddedLanguage::Handlebars],
+            "html" | "json" | "handlebars" | "handlebars-json" => {
+                vec![EmbeddedLanguage::Handlebars]
+            }
+            _ => Vec::new(),
         },
     })
 }

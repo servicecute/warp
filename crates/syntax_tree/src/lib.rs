@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
-use embedded::mjml_css_regions;
+use embedded::{HandlebarsTokenKind, handlebars_tokens, mjml_css_regions};
 use futures::stream::AbortHandle;
 use languages::{EmbeddedLanguage, Language};
 use parking_lot::Mutex;
@@ -42,6 +42,7 @@ struct LanguageQueries {
     language: Arc<Language>,
     syntax_query: HighlightQuery,
     embedded_queries: Vec<EmbeddedQuery>,
+    handlebars_enabled: bool,
 }
 
 struct EmbeddedQuery {
@@ -131,13 +132,18 @@ impl SyntaxTreeState {
                         highlight_query,
                     })
                 }
+                EmbeddedLanguage::Handlebars => None,
             })
             .collect();
+        let handlebars_enabled = language
+            .embedded_languages
+            .contains(&EmbeddedLanguage::Handlebars);
 
         self.language_queries = Some(LanguageQueries {
             syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map),
             language,
             embedded_queries,
+            handlebars_enabled,
         });
     }
 
@@ -239,6 +245,29 @@ impl SyntaxTreeState {
                             combined_highlights.insert(highlight_range.clone(), *color);
                         }
                     }
+                }
+            }
+        }
+
+        if language_queries.handlebars_enabled {
+            let source = buffer.as_ref(ctx).text().into_string();
+            for token in handlebars_tokens(&source) {
+                let color = match token.kind {
+                    HandlebarsTokenKind::Delimiter => self.color_map.comment_color,
+                    HandlebarsTokenKind::Keyword => self.color_map.keyword_color,
+                    HandlebarsTokenKind::Helper => self.color_map.function_color,
+                    HandlebarsTokenKind::Path => self.color_map.property_color,
+                    HandlebarsTokenKind::String => self.color_map.string_color,
+                    HandlebarsTokenKind::Number => self.color_map.number_color,
+                    HandlebarsTokenKind::Comment => self.color_map.comment_color,
+                };
+                let char_start = source[..token.range.start].chars().count();
+                let char_end = source[..token.range.end].chars().count();
+                let highlight_range = CharOffset::from(char_start)..CharOffset::from(char_end);
+                if ranges.iter().any(|range| {
+                    range.start <= highlight_range.end && highlight_range.start <= range.end
+                }) {
+                    combined_highlights.insert(highlight_range, color);
                 }
             }
         }

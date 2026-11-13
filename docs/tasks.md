@@ -16,7 +16,7 @@ not be mixed into grammar-only pull requests.
 | 5 | SurrealQL syntax highlighting | Planned | None |
 | 6 | MJML syntax highlighting | In PR #4 | None |
 | 7 | Embedded CSS highlighting | In PR #5 | MJML syntax highlighting |
-| 8 | Handlebars syntax highlighting | Planned | MJML baseline; template-token design |
+| 8 | Handlebars syntax highlighting | In PR #6 | MJML baseline; template-token design |
 | 9 | Embedded-language highlighting foundation | Future | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
 
@@ -176,7 +176,7 @@ Acceptance criteria:
 
 ## Task 8 — Handlebars syntax highlighting
 
-Status: Planned.
+Status: In PR #6.
 
 Add delimiter-aware highlighting for standalone Handlebars templates and
 template expressions embedded in MJML. Keep this separate from CSS because
