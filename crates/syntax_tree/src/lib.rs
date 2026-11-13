@@ -1,11 +1,13 @@
+mod embedded;
 mod queries;
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
+use embedded::mjml_css_regions;
 use futures::stream::AbortHandle;
-use languages::Language;
+use languages::{EmbeddedLanguage, Language};
 use parking_lot::Mutex;
 use queries::highlight_query::HighlightQuery;
 pub use queries::highlight_query::{ColorMap, TextSlice};
@@ -39,6 +41,13 @@ pub enum DecorationStateEvent {
 struct LanguageQueries {
     language: Arc<Language>,
     syntax_query: HighlightQuery,
+    embedded_queries: Vec<EmbeddedQuery>,
+}
+
+struct EmbeddedQuery {
+    grammar: arborium::tree_sitter::Language,
+    syntax_query: HighlightQuery,
+    highlight_query: arborium::tree_sitter::Query,
 }
 
 /// Single-entry cache for highlight queries.
@@ -105,9 +114,30 @@ impl SyntaxTreeState {
     }
 
     pub fn set_language(&mut self, language: Arc<Language>) {
+        let embedded_queries = language
+            .embedded_languages
+            .iter()
+            .filter_map(|embedded_language| match embedded_language {
+                EmbeddedLanguage::Css => {
+                    let grammar = arborium::get_language("css")?;
+                    let highlight_query = arborium::tree_sitter::Query::new(
+                        &grammar,
+                        arborium::lang_css::HIGHLIGHTS_QUERY,
+                    )
+                    .expect("arborium CSS highlight query should be valid");
+                    Some(EmbeddedQuery {
+                        syntax_query: HighlightQuery::new(&highlight_query, self.color_map),
+                        grammar,
+                        highlight_query,
+                    })
+                }
+            })
+            .collect();
+
         self.language_queries = Some(LanguageQueries {
             syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map),
             language,
+            embedded_queries,
         });
     }
 
@@ -178,6 +208,38 @@ impl SyntaxTreeState {
             // Merge the highlights into the combined map
             for (highlight_range, color) in highlights.iter() {
                 combined_highlights.insert(highlight_range.clone(), *color);
+            }
+        }
+
+        if !language_queries.embedded_queries.is_empty() {
+            let source = buffer.as_ref(ctx).text().into_string();
+            for embedded_query in &language_queries.embedded_queries {
+                for region in mjml_css_regions(&source) {
+                    let embedded_source = &source[region.clone()];
+                    let mut parser = Parser::new();
+                    parser
+                        .set_language(&embedded_query.grammar)
+                        .expect("incompatible embedded grammar");
+                    let Some(tree) = parser.parse(embedded_source, None) else {
+                        continue;
+                    };
+                    let highlights = embedded_query
+                        .syntax_query
+                        .get_highlighted_chunks_from_text(
+                            &embedded_query.highlight_query,
+                            embedded_source,
+                            &source,
+                            region.start,
+                            &tree,
+                        );
+                    for (highlight_range, color) in highlights.iter() {
+                        if ranges.iter().any(|range| {
+                            range.start <= highlight_range.end && highlight_range.start <= range.end
+                        }) {
+                            combined_highlights.insert(highlight_range.clone(), *color);
+                        }
+                    }
+                }
             }
         }
 
