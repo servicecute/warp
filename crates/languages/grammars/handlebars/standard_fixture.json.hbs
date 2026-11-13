@@ -1,0 +1,7 @@
+{
+  "subject": "{{order.subject}}",
+  "customer": "{{#if order.customer}}{{order.customer.name}}{{else}}Guest{{/if}}",
+  "items": "{{#each order.items}}{{name}}{{#unless @last}}, {{/unless}}{{/each}}",
+  "partial": "{{> order-footer order=order}}",
+  "html": "{{{trusted_html}}}"
+}
