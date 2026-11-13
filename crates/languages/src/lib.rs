@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 35] = [
+pub const SUPPORTED_LANGUAGES: [&str; 36] = [
     "rust",
     "golang",
     "yaml",
@@ -32,6 +32,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 35] = [
     "shell",
     "csharp",
     "html",
+    "mjml",
     "css",
     "c",
     "json",
@@ -174,6 +175,7 @@ fn language_by_filename_parts(
         "sh" | "zsh" | "bash" | "command" => language_by_name("shell"),
         "cs" => language_by_name("csharp"),
         "html" | "htm" => language_by_name("html"),
+        "mjml" => language_by_name("mjml"),
         "css" => language_by_name("css"),
         "c" => language_by_name("c"),
         "json" => language_by_name("json"),
@@ -250,6 +252,7 @@ fn to_arborium_name(lang: &str) -> &str {
         "shell" => "bash",
         "csharp" => "c-sharp",
         "jsx" => "javascript",
+        "mjml" => "html",
         "objective-c" => "objc",
         "sql" => "sql",
         other => other,
@@ -272,6 +275,7 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "shell" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         "csharp" => Some(arborium::lang_c_sharp::HIGHLIGHTS_QUERY),
         "html" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "mjml" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
         "css" => Some(arborium::lang_css::HIGHLIGHTS_QUERY),
         "c" => Some(arborium::lang_c::HIGHLIGHTS_QUERY),
         "json" => Some(arborium::lang_json::HIGHLIGHTS_QUERY),
