@@ -6,6 +6,9 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
+dirs.workspace = true
+log.workspace = true
+regex.workspace = true
 serde.workspace = true
 serde_yaml.workspace = true
 rust-embed.workspace = true

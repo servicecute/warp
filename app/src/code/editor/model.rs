@@ -1403,6 +1403,14 @@ impl CodeEditorModel {
     fn syntax_highlighting_color_map(ctx: &mut ModelContext<Self>) -> ColorMap {
         let appearance = Appearance::as_ref(ctx);
         let terminal_color = appearance.theme().terminal_colors().normal;
+        let custom_highlight_colors = languages::user_highlight_color_overrides()
+            .into_iter()
+            .filter_map(|(scope, color)| {
+                warp_core::ui::color::hex_color::coloru_from_hex_string(&color)
+                    .ok()
+                    .map(|color| (scope, color))
+            })
+            .collect();
 
         // TODO: This mapping is not finalized. We still need to double check with design.
         ColorMap {
@@ -1430,6 +1438,7 @@ impl CodeEditorModel {
             tag_color: AnsiColorIdentifier::Red
                 .to_ansi_color(&terminal_color)
                 .into(),
+            custom_highlight_colors: Arc::new(custom_highlight_colors),
         }
     }
 
