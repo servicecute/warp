@@ -231,7 +231,10 @@ pub struct Language {
     pub symbols_query: Option<Query>,
     /// Display name for the language.
     pub display_name: String,
-    /// Languages embedded in the source that need a secondary parser.
+    /// Languages embedded in the source that need a secondary highlighter.
+    ///
+    /// Entries are ordered from lowest to highest precedence. Later entries
+    /// are applied after earlier entries when ranges overlap.
     pub embedded_languages: Vec<EmbeddedLanguage>,
 }
 

@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
-use embedded::{HandlebarsTokenKind, handlebars_tokens, mjml_css_regions};
+use embedded::{HandlebarsTokenKind, handlebars_tokens, regions_for};
 use futures::stream::AbortHandle;
 use languages::{EmbeddedLanguage, Language};
 use parking_lot::Mutex;
@@ -41,14 +41,17 @@ pub enum DecorationStateEvent {
 struct LanguageQueries {
     language: Arc<Language>,
     syntax_query: HighlightQuery,
-    embedded_queries: Vec<EmbeddedQuery>,
-    handlebars_enabled: bool,
+    embedded_highlighters: Vec<EmbeddedHighlighter>,
 }
 
-struct EmbeddedQuery {
-    grammar: arborium::tree_sitter::Language,
-    syntax_query: HighlightQuery,
-    highlight_query: arborium::tree_sitter::Query,
+enum EmbeddedHighlighter {
+    TreeSitter {
+        language: EmbeddedLanguage,
+        grammar: arborium::tree_sitter::Language,
+        syntax_query: HighlightQuery,
+        highlight_query: arborium::tree_sitter::Query,
+    },
+    Handlebars,
 }
 
 /// Single-entry cache for highlight queries.
@@ -115,7 +118,9 @@ impl SyntaxTreeState {
     }
 
     pub fn set_language(&mut self, language: Arc<Language>) {
-        let embedded_queries = language
+        // The order is the precedence order: later highlighters are applied
+        // later and therefore win when their ranges overlap earlier ones.
+        let embedded_highlighters = language
             .embedded_languages
             .iter()
             .filter_map(|embedded_language| match embedded_language {
@@ -126,24 +131,21 @@ impl SyntaxTreeState {
                         arborium::lang_css::HIGHLIGHTS_QUERY,
                     )
                     .expect("arborium CSS highlight query should be valid");
-                    Some(EmbeddedQuery {
+                    Some(EmbeddedHighlighter::TreeSitter {
+                        language: *embedded_language,
                         syntax_query: HighlightQuery::new(&highlight_query, self.color_map),
                         grammar,
                         highlight_query,
                     })
                 }
-                EmbeddedLanguage::Handlebars => None,
+                EmbeddedLanguage::Handlebars => Some(EmbeddedHighlighter::Handlebars),
             })
             .collect();
-        let handlebars_enabled = language
-            .embedded_languages
-            .contains(&EmbeddedLanguage::Handlebars);
 
         self.language_queries = Some(LanguageQueries {
             syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map),
             language,
-            embedded_queries,
-            handlebars_enabled,
+            embedded_highlighters,
         });
     }
 
@@ -217,57 +219,65 @@ impl SyntaxTreeState {
             }
         }
 
-        if !language_queries.embedded_queries.is_empty() {
+        if !language_queries.embedded_highlighters.is_empty() {
             let source = buffer.as_ref(ctx).text().into_string();
-            for embedded_query in &language_queries.embedded_queries {
-                for region in mjml_css_regions(&source) {
-                    let embedded_source = &source[region.clone()];
-                    let mut parser = Parser::new();
-                    parser
-                        .set_language(&embedded_query.grammar)
-                        .expect("incompatible embedded grammar");
-                    let Some(tree) = parser.parse(embedded_source, None) else {
-                        continue;
-                    };
-                    let highlights = embedded_query
-                        .syntax_query
-                        .get_highlighted_chunks_from_text(
-                            &embedded_query.highlight_query,
-                            embedded_source,
-                            &source,
-                            region.start,
-                            &tree,
-                        );
-                    for (highlight_range, color) in highlights.iter() {
-                        if ranges.iter().any(|range| {
-                            range.start <= highlight_range.end && highlight_range.start <= range.end
-                        }) {
-                            combined_highlights.insert(highlight_range.clone(), *color);
+            for embedded_highlighter in &language_queries.embedded_highlighters {
+                match embedded_highlighter {
+                    EmbeddedHighlighter::TreeSitter {
+                        language,
+                        grammar,
+                        syntax_query,
+                        highlight_query,
+                    } => {
+                        for region in regions_for(&source, *language) {
+                            let embedded_source = &source[region.clone()];
+                            let mut parser = Parser::new();
+                            parser
+                                .set_language(grammar)
+                                .expect("incompatible embedded grammar");
+                            let Some(tree) = parser.parse(embedded_source, None) else {
+                                continue;
+                            };
+                            let highlights = syntax_query.get_highlighted_chunks_from_text(
+                                highlight_query,
+                                embedded_source,
+                                &source,
+                                region.start,
+                                &tree,
+                            );
+                            for (highlight_range, color) in highlights.iter() {
+                                if ranges.iter().any(|range| {
+                                    range.start <= highlight_range.end
+                                        && highlight_range.start <= range.end
+                                }) {
+                                    combined_highlights.insert(highlight_range.clone(), *color);
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-
-        if language_queries.handlebars_enabled {
-            let source = buffer.as_ref(ctx).text().into_string();
-            for token in handlebars_tokens(&source) {
-                let color = match token.kind {
-                    HandlebarsTokenKind::Delimiter => self.color_map.comment_color,
-                    HandlebarsTokenKind::Keyword => self.color_map.keyword_color,
-                    HandlebarsTokenKind::Helper => self.color_map.function_color,
-                    HandlebarsTokenKind::Path => self.color_map.property_color,
-                    HandlebarsTokenKind::String => self.color_map.string_color,
-                    HandlebarsTokenKind::Number => self.color_map.number_color,
-                    HandlebarsTokenKind::Comment => self.color_map.comment_color,
-                };
-                let char_start = source[..token.range.start].chars().count();
-                let char_end = source[..token.range.end].chars().count();
-                let highlight_range = CharOffset::from(char_start)..CharOffset::from(char_end);
-                if ranges.iter().any(|range| {
-                    range.start <= highlight_range.end && highlight_range.start <= range.end
-                }) {
-                    combined_highlights.insert(highlight_range, color);
+                    EmbeddedHighlighter::Handlebars => {
+                        for token in handlebars_tokens(&source) {
+                            let color = match token.kind {
+                                HandlebarsTokenKind::Delimiter => self.color_map.comment_color,
+                                HandlebarsTokenKind::Keyword => self.color_map.keyword_color,
+                                HandlebarsTokenKind::Helper => self.color_map.function_color,
+                                HandlebarsTokenKind::Path => self.color_map.property_color,
+                                HandlebarsTokenKind::String => self.color_map.string_color,
+                                HandlebarsTokenKind::Number => self.color_map.number_color,
+                                HandlebarsTokenKind::Comment => self.color_map.comment_color,
+                            };
+                            let char_start = source[..token.range.start].chars().count();
+                            let char_end = source[..token.range.end].chars().count();
+                            let highlight_range =
+                                CharOffset::from(char_start)..CharOffset::from(char_end);
+                            if ranges.iter().any(|range| {
+                                range.start <= highlight_range.end
+                                    && highlight_range.start <= range.end
+                            }) {
+                                combined_highlights.insert(highlight_range, color);
+                            }
+                        }
+                    }
                 }
             }
         }
