@@ -10,15 +10,22 @@ use serde::{Deserialize, Serialize};
 use warp_editor::content::text::IndentUnit;
 use warp_util::standardized_path::StandardizedPath;
 
+mod custom_highlighting;
+pub use custom_highlighting::{
+    CustomHighlightMatch, CustomHighlightRuleDefinition, CustomHighlighting, UserLanguageConfig,
+    UserLanguageDefinition,
+};
+
 #[derive(RustEmbed)]
 #[folder = "grammars"]
 struct Grammars;
 
 lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
+    static ref USER_LANGUAGE_CONFIG: UserLanguageConfig = load_user_language_config();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 35] = [
+pub const SUPPORTED_LANGUAGES: [&str; 37] = [
     "rust",
     "golang",
     "yaml",
@@ -46,6 +53,8 @@ pub const SUPPORTED_LANGUAGES: [&str; 35] = [
     "scala",
     "powershell",
     "elixir",
+    "dart",
+    "gleam",
     "sql",
     "starlark",
     "objective-c",
@@ -127,6 +136,37 @@ pub fn language_by_name(name: &str) -> Option<Arc<Language>> {
     LANGUAGE_REGISTRY.language_by_name(normalized)
 }
 
+pub fn user_highlight_color_overrides() -> std::collections::HashMap<String, String> {
+    user_highlight_color_overrides_for(&USER_LANGUAGE_CONFIG)
+}
+
+fn user_highlight_color_overrides_for(
+    config: &UserLanguageConfig,
+) -> std::collections::HashMap<String, String> {
+    config
+        .languages
+        .iter()
+        .flat_map(|language| language.colors.iter())
+        .map(|(scope, color)| (scope.clone(), color.clone()))
+        .collect()
+}
+
+fn user_language_for_extension(
+    extension: &str,
+    config: &UserLanguageConfig,
+) -> Option<Arc<Language>> {
+    config
+        .languages
+        .iter()
+        .find(|language| {
+            language
+                .extensions
+                .iter()
+                .any(|candidate| candidate.trim_start_matches('.') == extension)
+        })
+        .and_then(|language| language_by_name(&language.language))
+}
+
 fn language_by_filename_parts(
     filename: Option<&str>,
     extension: Option<&str>,
@@ -160,6 +200,10 @@ fn language_by_filename_parts(
     }
 
     let extension = extension?;
+    if let Some(language) = user_language_for_extension(extension, &USER_LANGUAGE_CONFIG) {
+        return Some(language);
+    }
+
     match extension {
         "rs" => language_by_name("rust"),
         "go" => language_by_name("golang"),
@@ -189,6 +233,8 @@ fn language_by_filename_parts(
         "scala" | "sbt" | "sc" => language_by_name("scala"),
         "ps1" | "pwsh" => language_by_name("powershell"),
         "ex" | "exs" => language_by_name("elixir"),
+        "dart" => language_by_name("dart"),
+        "gleam" => language_by_name("gleam"),
         "sql" => language_by_name("sql"),
         "bzl" | "bazel" => language_by_name("starlark"),
         "m" | "mm" => language_by_name("objective-c"),
@@ -217,6 +263,10 @@ pub struct Language {
     pub bracket_pairs: Vec<(char, char)>,
     /// Query for parsing symbols.
     pub symbols_query: Option<Query>,
+    /// Optional query selecting nodes that may contain custom highlighting rules.
+    pub custom_highlight_query: Option<Query>,
+    /// Custom highlighting rules applied to selected query nodes.
+    pub custom_highlighting: Option<CustomHighlighting>,
     /// Display name for the language.
     pub display_name: String,
 }
@@ -287,6 +337,8 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "scala" => Some(arborium::lang_scala::HIGHLIGHTS_QUERY),
         "powershell" => Some(arborium::lang_powershell::HIGHLIGHTS_QUERY),
         "elixir" => Some(arborium::lang_elixir::HIGHLIGHTS_QUERY),
+        "dart" => Some(arborium::lang_dart::HIGHLIGHTS_QUERY),
+        "gleam" => Some(arborium::lang_gleam::HIGHLIGHTS_QUERY),
         "sql" => Some(arborium::lang_sql::HIGHLIGHTS_QUERY),
         "starlark" => Some(arborium::lang_starlark::HIGHLIGHTS_QUERY),
         "objective-c" => Some(&arborium::lang_objc::HIGHLIGHTS_QUERY),
@@ -325,6 +377,9 @@ fn load_language(lang: &str) -> Option<Language> {
 
     let symbols_query_path = [lang, "identifiers.scm"].join("\\");
     let symbols_query = load_query(&symbols_query_path, &grammar);
+    let custom_highlight_query_path = [lang, "custom_highlights.scm"].join("\\");
+    let custom_highlight_query = load_query(&custom_highlight_query_path, &grammar);
+    let custom_highlighting = load_custom_highlighting(lang);
 
     Some(Language {
         highlight_query,
@@ -334,8 +389,61 @@ fn load_language(lang: &str) -> Option<Language> {
         comment_prefix,
         bracket_pairs,
         symbols_query,
+        custom_highlight_query,
+        custom_highlighting,
         display_name: config.display_name,
     })
+}
+
+fn load_custom_highlighting(lang: &str) -> Option<CustomHighlighting> {
+    let path = [lang, "custom_highlights.yaml"].join("\\");
+    let file = <Grammars as RustEmbed>::get(&path)?;
+    let definitions: Vec<CustomHighlightRuleDefinition> = serde_yaml::from_slice(&file.data)
+        .unwrap_or_else(|error| {
+            panic!("Unable to deserialize custom highlighting rules from {path}: {error}")
+        });
+
+    let mut highlighting =
+        CustomHighlighting::from_definitions(&definitions).unwrap_or_else(|error| {
+            panic!("Invalid built-in custom highlighting rules from {path}: {error}")
+        });
+
+    for user_language in USER_LANGUAGE_CONFIG
+        .languages
+        .iter()
+        .filter(|language| language.language == lang)
+    {
+        let (user_highlighting, errors) =
+            CustomHighlighting::from_definitions_lossy(&user_language.custom_highlights);
+        for error in errors {
+            log::warn!("Ignoring invalid user custom highlighting rule for {lang}: {error}");
+        }
+        highlighting.extend(user_highlighting);
+    }
+
+    Some(highlighting)
+}
+
+fn load_user_language_config() -> UserLanguageConfig {
+    let path = std::env::var_os("WARP_LANGUAGE_CONFIG")
+        .map(std::path::PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".warp/languages.yaml")));
+
+    let Some(path) = path else {
+        return UserLanguageConfig::default();
+    };
+
+    let Ok(contents) = std::fs::read(path) else {
+        return UserLanguageConfig::default();
+    };
+
+    match serde_yaml::from_slice(&contents) {
+        Ok(config) => config,
+        Err(error) => {
+            log::warn!("Ignoring invalid Warp language configuration: {error}");
+            UserLanguageConfig::default()
+        }
+    }
 }
 
 fn load_yaml(path: &str) -> LanguageConfig {
