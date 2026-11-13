@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use arborium::tree_sitter::StreamingIterator;
 use warp_util::standardized_path::StandardizedPath;
 
 use crate::{SUPPORTED_LANGUAGES, language_by_filename, language_by_local_filename, load_language};
@@ -57,6 +58,67 @@ fn local_html_extensions_resolve_to_html() {
             "{filename} should resolve to HTML",
         );
     }
+}
+
+#[test]
+fn mjml_extension_resolves_to_mjml() {
+    let path = StandardizedPath::try_new("/tmp/email.mjml").expect("test path should be absolute");
+    let language = language_by_filename(&path).expect("`.mjml` files should resolve to MJML");
+    assert_eq!(language.display_name(), "MJML");
+}
+
+#[test]
+fn mjml_standard_fixture_loads() {
+    let language = load_language("mjml").expect("MJML should load");
+    let fixture = include_str!("../grammars/mjml/standard_fixture.mjml");
+    let mut parser = arborium::tree_sitter::Parser::new();
+    parser
+        .set_language(&language.grammar)
+        .expect("MJML should use a compatible HTML grammar");
+    let tree = parser
+        .parse(fixture, None)
+        .expect("MJML fixture should parse");
+
+    assert!(!tree.root_node().has_error());
+}
+
+#[test]
+fn mjml_standard_fixture_has_html_highlight_captures() {
+    let language = load_language("mjml").expect("MJML should load");
+    let fixture = include_str!("../grammars/mjml/standard_fixture.mjml");
+    let mut parser = arborium::tree_sitter::Parser::new();
+    parser
+        .set_language(&language.grammar)
+        .expect("MJML should use a compatible HTML grammar");
+    let tree = parser
+        .parse(fixture, None)
+        .expect("MJML fixture should parse");
+
+    let capture_names = language.highlight_query.capture_names();
+    assert!(
+        capture_names.iter().any(|name| *name == "tag"),
+        "the HTML highlight query should expose tag captures"
+    );
+    assert!(
+        capture_names.iter().any(|name| *name == "string"),
+        "the HTML highlight query should expose string captures"
+    );
+
+    let mut cursor = arborium::tree_sitter::QueryCursor::new();
+    let mut captures = cursor.captures(
+        &language.highlight_query,
+        tree.root_node(),
+        fixture.as_bytes(),
+    );
+    let mut capture_count = 0;
+    while let Some((query_match, _)) = captures.next() {
+        capture_count += query_match.captures.len();
+    }
+
+    assert!(
+        capture_count > 0,
+        "MJML should produce visible highlight captures"
+    );
 }
 
 /// `.command` is the macOS convention for double-clickable shell scripts.
