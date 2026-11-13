@@ -165,10 +165,13 @@ fn convert_capture_name_to_color(name: &str, color_map: &ColorMap) -> Option<Col
         Some("function") => Some(color_map.function_color),
         Some("string") => Some(color_map.string_color),
         Some("type") => Some(color_map.type_color),
-        Some("number") => Some(color_map.number_color),
+        Some("number") | Some("boolean") | Some("constant") => Some(color_map.number_color),
         Some("comment") => Some(color_map.comment_color),
         Some("property") => Some(color_map.property_color),
         Some("tag") => Some(color_map.tag_color),
+        Some("attribute") | Some("operator") => Some(color_map.keyword_color),
+        Some("variable") => Some(color_map.property_color),
+        Some("constructor") => Some(color_map.function_color),
         Some("punctuation") => Some(color_map.comment_color),
         _ => None,
     }
@@ -323,5 +326,30 @@ mod tests {
                 1
             );
         });
+    }
+
+    #[test]
+    fn dart_standard_query_maps_standard_capture_categories() {
+        let color_map = test_color_map();
+
+        for capture in [
+            "keyword",
+            "type",
+            "attribute",
+            "function",
+            "function.call",
+            "string",
+            "number",
+            "boolean",
+            "comment",
+            "operator",
+            "variable",
+            "constructor",
+        ] {
+            assert!(
+                convert_capture_name_to_color(capture, &color_map).is_some(),
+                "Dart capture {capture} should map to a Warp color"
+            );
+        }
     }
 }

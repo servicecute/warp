@@ -53,11 +53,11 @@ not disable the built-in rules or prevent Warp from starting.
 ## Verification
 
 The language registry tests cover `.gleam` resolution, embedded codegen rules,
-unknown-directive behavior, and regex capture validation. The syntax-tree tests
-must be run with the local Metal bypass when the Xcode Metal Toolchain is not
-installed:
+unknown-directive behavior, regex capture validation, and the Dart language
+fixture. The syntax-tree tests cover the Gleam overlay and Dart's standard
+capture categories.
 
 ```bash
 cargo test -p languages
-WARP_LOCAL_SKIP_METAL=1 MACOSX_DEPLOYMENT_TARGET=15.0 cargo test -p syntax_tree
+TOOLCHAINS=Metal MACOSX_DEPLOYMENT_TARGET=15.0 cargo test -p syntax_tree
 ```

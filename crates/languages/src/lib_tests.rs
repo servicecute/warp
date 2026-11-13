@@ -116,6 +116,28 @@ fn local_gleam_extension_resolves_to_gleam() {
 }
 
 #[test]
+fn dart_extension_resolves_to_dart() {
+    let path = StandardizedPath::try_new("/tmp/app.dart").expect("test path should be absolute");
+    let language = language_by_filename(&path).expect("`.dart` files should resolve to a language");
+    assert_eq!(language.display_name(), "Dart");
+}
+
+#[test]
+fn dart_standard_fixture_loads() {
+    let language = load_language("dart").expect("Dart should load");
+    let fixture = include_str!("../grammars/dart/standard_fixture.dart");
+    let mut parser = arborium::tree_sitter::Parser::new();
+    parser
+        .set_language(&language.grammar)
+        .expect("Dart grammar should be compatible");
+    let tree = parser
+        .parse(fixture, None)
+        .expect("Dart fixture should parse");
+
+    assert!(!tree.root_node().has_error());
+}
+
+#[test]
 fn user_extension_alias_resolves_to_configured_language() {
     let config = UserLanguageConfig {
         languages: vec![UserLanguageDefinition {
