@@ -3,7 +3,10 @@ use std::path::Path;
 use arborium::tree_sitter::StreamingIterator;
 use warp_util::standardized_path::StandardizedPath;
 
-use crate::{SUPPORTED_LANGUAGES, language_by_filename, language_by_local_filename, load_language};
+use crate::{
+    EmbeddedLanguage, SUPPORTED_LANGUAGES, language_by_filename, language_by_local_filename,
+    load_language,
+};
 
 /// Validate that every supported language can be loaded successfully.
 /// This catches invalid node types, syntax errors, and other issues in .scm query files
@@ -166,6 +169,16 @@ fn handlebars_fixtures_load_and_parse() {
         let tree = parser.parse(fixture, None).expect("fixture should parse");
         assert_eq!(tree.root_node().byte_range(), 0..fixture.len());
     }
+}
+
+#[test]
+fn mjml_embedded_languages_declare_precedence_order() {
+    let language = load_language("mjml").expect("MJML language should load");
+
+    assert_eq!(
+        language.embedded_languages,
+        vec![EmbeddedLanguage::Css, EmbeddedLanguage::Handlebars]
+    );
 }
 
 /// `.command` is the macOS convention for double-clickable shell scripts.

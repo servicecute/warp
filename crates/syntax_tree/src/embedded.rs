@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use languages::EmbeddedLanguage;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HandlebarsTokenKind {
     Delimiter,
@@ -17,8 +19,19 @@ pub(crate) struct HandlebarsToken {
     pub kind: HandlebarsTokenKind,
 }
 
+/// Finds regions owned by an embedded language.
+///
+/// The caller supplies the language explicitly so a parent grammar cannot
+/// accidentally run an unrelated child parser over the whole document.
+pub(crate) fn regions_for(source: &str, language: EmbeddedLanguage) -> Vec<Range<usize>> {
+    match language {
+        EmbeddedLanguage::Css => mjml_css_regions(source),
+        EmbeddedLanguage::Handlebars => Vec::new(),
+    }
+}
+
 /// Finds CSS fragments that are embedded in MJML markup.
-pub(crate) fn mjml_css_regions(source: &str) -> Vec<Range<usize>> {
+fn mjml_css_regions(source: &str) -> Vec<Range<usize>> {
     let lower = source.to_ascii_lowercase();
     let mut regions = Vec::new();
 
@@ -248,8 +261,9 @@ fn is_helper(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{HandlebarsTokenKind, mjml_css_regions};
+    use super::{HandlebarsTokenKind, mjml_css_regions, regions_for};
     use arborium::tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
+    use languages::EmbeddedLanguage;
 
     #[test]
     fn finds_block_and_inline_css_regions() {
@@ -260,6 +274,18 @@ mod tests {
         assert_eq!(regions.len(), 2);
         assert_eq!(&source[regions[0].clone()], ".title { color: red; }");
         assert_eq!(&source[regions[1].clone()], "color: blue;");
+    }
+
+    #[test]
+    fn embedded_regions_are_scoped_to_the_declared_language() {
+        let source = r#"<mj-style>.title { color: red; }</mj-style>
+<mj-text style="color: blue;">{{name}}</mj-text>"#;
+        let css_regions = regions_for(source, EmbeddedLanguage::Css);
+
+        assert_eq!(css_regions.len(), 2);
+        assert_eq!(&source[css_regions[0].clone()], ".title { color: red; }");
+        assert_eq!(&source[css_regions[1].clone()], "color: blue;");
+        assert!(regions_for(source, EmbeddedLanguage::Handlebars).is_empty());
     }
 
     #[test]

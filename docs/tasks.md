@@ -17,7 +17,7 @@ not be mixed into grammar-only pull requests.
 | 6 | MJML syntax highlighting | In PR #4 | None |
 | 7 | Embedded CSS highlighting | In PR #5 | MJML syntax highlighting |
 | 8 | Handlebars syntax highlighting | In PR #6 | MJML baseline; template-token design |
-| 9 | Embedded-language highlighting foundation | Future | Tasks 7 and 8 |
+| 9 | Embedded-language highlighting foundation | In PR #7 | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
 
 ## Task 1 — Dart syntax highlighting
@@ -202,19 +202,20 @@ Acceptance criteria:
 
 ## Task 9 — Embedded-language highlighting foundation
 
-Status: Future.
+Status: In PR #7.
 
-Generalize the region discovery and capture-merging path proven by Task 7 into
-an explicit grammar-composition/injection model. This should remain a separate
-architecture PR rather than expanding either the MJML or Handlebars PR.
+Generalize the region discovery and capture-merging path proven by Tasks 7 and
+8 into an explicit grammar-composition/injection model. This PR is limited to
+the composition boundary and must not add new language grammars.
 
 Initial targets:
 
-- HTML with CSS and JavaScript;
-- MJML with HTML, CSS, and Handlebars;
-- Markdown fenced Gleam and other code blocks;
-- Dockerfile shell fragments; and
-- SQL or SurrealQL embedded in application strings.
+- Keep the existing MJML CSS and Handlebars highlighters behind one pipeline.
+- Make each embedded language declare its owned regions or token stream.
+- Make precedence explicit and deterministic: later configured injections win
+  overlapping ranges.
+- Leave future HTML/CSS/JavaScript, Markdown fences, Dockerfile shell
+  fragments, and SQL/SurrealQL injections for follow-up language PRs.
 
 Acceptance criteria:
 
