@@ -2,6 +2,11 @@
 
 This file provides guidance when working with code in this repository.
 
+## Steering Index
+
+0. `.kiro/steering/remote-steering-bootstrap.md` — `inclusion: always` —
+   Bootstrap global steering on remote or ephemeral environments.
+
 ## Development Commands
 
 ### Build and Run
