@@ -11,7 +11,7 @@ not be mixed into grammar-only pull requests.
 | --- | --- | --- | --- |
 | 1 | Dart syntax highlighting | In PR #2 | None |
 | 2 | Custom Warp release workflow | In PR #3 | None |
-| 3 | Internal editor text fallback | Planned | None |
+| 3 | Internal editor text fallback | In PR #8 | None |
 | 4 | Erlang syntax highlighting | Planned | None |
 | 5 | SurrealQL syntax highlighting | Planned | None |
 | 6 | MJML syntax highlighting | In PR #4 | None |
@@ -54,7 +54,7 @@ Acceptance criteria:
 
 ## Task 3 — Internal editor text fallback
 
-Status: In PR #4.
+Status: In PR #8.
 
 Fix routing for repository text files that do not have a registered language.
 Unknown language must not imply unknown content or cause an implicit handoff

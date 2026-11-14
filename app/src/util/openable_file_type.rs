@@ -5,7 +5,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use warp_core::features::FeatureFlag;
 pub use warp_util::file_type::{
-    is_binary_file, is_file_content_binary, is_jupyter_notebook_file, is_markdown_file,
+    is_binary_file, is_file_content_binary, is_jupyter_notebook_file, is_known_binary_extension,
+    is_markdown_file,
 };
 
 #[cfg(feature = "local_fs")]
@@ -59,6 +60,19 @@ pub enum FileTarget {
     SystemDefault,
     /// Open in the system default application (generic open, e.g. for binary files).
     SystemGeneric,
+}
+
+/// Named options for resolving the surface used to open a file.
+///
+/// Keeping these values together prevents new editor behavior from expanding
+/// the resolver's positional argument list.
+#[cfg(feature = "local_fs")]
+pub struct FileOpenOptions<'a> {
+    pub editor_choice: EditorChoice,
+    pub prefer_markdown_viewer: bool,
+    pub default_layout: EditorLayout,
+    pub layout: Option<EditorLayout>,
+    pub additional_text_file_patterns: &'a [String],
 }
 
 /// Checks if a file is a code file with language support.
@@ -153,6 +167,21 @@ pub fn is_runnable_shell_script(_path: &Path) -> bool {
 /// Determines if a file can be opened in Warp and returns its type.
 /// Returns `None` if the file is binary and should not be opened.
 pub fn is_file_openable_in_warp(path: &Path) -> Option<OpenableFileType> {
+    is_file_openable_in_warp_with_patterns(path, &[])
+}
+
+/// Determines if a file can be opened in Warp, including user-configured
+/// names and simple glob patterns that should be treated as text.
+pub fn is_file_openable_in_warp_with_patterns(
+    path: &Path,
+    additional_text_file_patterns: &[String],
+) -> Option<OpenableFileType> {
+    let matches_configured_pattern =
+        matches_additional_text_file_pattern(path, additional_text_file_patterns);
+    if matches_configured_pattern && !is_known_binary_extension(path) && !path.exists() {
+        return Some(OpenableFileType::Text);
+    }
+
     if is_binary_file(path) {
         return None;
     }
@@ -168,6 +197,27 @@ pub fn is_file_openable_in_warp(path: &Path) -> Option<OpenableFileType> {
     }
 }
 
+fn matches_additional_text_file_pattern(path: &Path, patterns: &[String]) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let file_name = file_name.to_ascii_lowercase();
+
+    patterns.iter().any(|pattern| {
+        let pattern = pattern.trim().to_ascii_lowercase();
+        !pattern.is_empty() && simple_glob_matches(&file_name, &pattern)
+    })
+}
+
+fn simple_glob_matches(value: &str, pattern: &str) -> bool {
+    let Some((prefix, suffix)) = pattern.split_once('*') else {
+        return value == pattern;
+    };
+    value.starts_with(prefix)
+        && value.ends_with(suffix)
+        && value.len() >= prefix.len() + suffix.len()
+}
+
 /// Only use this for UI elements that must explicitly open a file in Warp (i.e. "Open in New Tab").
 /// Prefer `resolve_file_target` for all other cases to respect users' preferences.
 /// This would also force any binary file to be opened in Warp's Code Editor, so you should likely check
@@ -178,7 +228,8 @@ pub fn resolve_file_target_to_open_in_warp(
     settings: &EditorSettings,
     layout: Option<EditorLayout>,
 ) -> FileTarget {
-    let openable_file_type = is_file_openable_in_warp(path);
+    let openable_file_type =
+        is_file_openable_in_warp_with_patterns(path, &settings.additional_text_file_patterns);
     let is_markdown = matches!(openable_file_type, Some(OpenableFileType::Markdown));
     let layout = layout.unwrap_or(*settings.open_file_layout);
 
@@ -203,12 +254,15 @@ pub fn resolve_file_target(
     settings: &EditorSettings,
     layout: Option<EditorLayout>,
 ) -> FileTarget {
-    resolve_file_target_with_editor_choice(
+    resolve_file_target_with_options(
         path,
-        *settings.open_file_editor,
-        *settings.prefer_markdown_viewer,
-        *settings.open_file_layout,
-        layout,
+        FileOpenOptions {
+            editor_choice: *settings.open_file_editor,
+            prefer_markdown_viewer: *settings.prefer_markdown_viewer,
+            default_layout: *settings.open_file_layout,
+            layout,
+            additional_text_file_patterns: &settings.additional_text_file_patterns,
+        },
     )
 }
 
@@ -220,10 +274,25 @@ pub fn resolve_file_target_with_editor_choice(
     default_layout: EditorLayout,
     layout: Option<EditorLayout>,
 ) -> FileTarget {
-    let is_openable_in_warp = is_file_openable_in_warp(path);
-    let is_markdown = matches!(is_openable_in_warp, Some(OpenableFileType::Markdown));
-    let layout = layout.unwrap_or(default_layout);
-    let is_openable_in_warp = is_openable_in_warp.is_some();
+    resolve_file_target_with_options(
+        path,
+        FileOpenOptions {
+            editor_choice,
+            prefer_markdown_viewer,
+            default_layout,
+            layout,
+            additional_text_file_patterns: &[],
+        },
+    )
+}
+
+#[cfg(feature = "local_fs")]
+pub fn resolve_file_target_with_options(path: &Path, options: FileOpenOptions<'_>) -> FileTarget {
+    let openable_file_type =
+        is_file_openable_in_warp_with_patterns(path, options.additional_text_file_patterns);
+    let is_markdown = matches!(openable_file_type, Some(OpenableFileType::Markdown));
+    let layout = options.layout.unwrap_or(options.default_layout);
+    let is_openable_in_warp = openable_file_type.is_some();
 
     // 0. Jupyter notebooks render in Warp's notebook viewer unconditionally
     // when the feature flag is enabled (not gated on `prefer_markdown_viewer`
@@ -236,17 +305,27 @@ pub fn resolve_file_target_with_editor_choice(
     }
 
     // 1. Markdown Viewer (only if user preference specified)
-    if is_markdown && prefer_markdown_viewer {
+    if is_markdown && options.prefer_markdown_viewer {
         return FileTarget::MarkdownViewer(layout);
     }
 
+    // Unknown but readable text should have a useful in-Warp fallback when
+    // the user has not explicitly selected an external editor. This keeps
+    // dotfiles and extensionless UTF-8 files editable without changing the
+    // explicit ExternalEditor, EnvEditor, or Warp choices below.
+    if matches!(openable_file_type, Some(OpenableFileType::Text))
+        && matches!(options.editor_choice, EditorChoice::SystemDefault)
+    {
+        return FileTarget::CodeEditor(layout);
+    }
+
     // 2. Warp Code Editor (Explicit user preference)
-    if is_openable_in_warp && matches!(editor_choice, EditorChoice::Warp) {
+    if is_openable_in_warp && matches!(options.editor_choice, EditorChoice::Warp) {
         return FileTarget::CodeEditor(layout);
     }
 
     // 3. Env Editor
-    if matches!(editor_choice, EditorChoice::EnvEditor) {
+    if matches!(options.editor_choice, EditorChoice::EnvEditor) {
         return FileTarget::EnvEditor;
     }
 
@@ -256,7 +335,7 @@ pub fn resolve_file_target_with_editor_choice(
     }
 
     // 5. External Editor or System Default (for text files)
-    match editor_choice {
+    match options.editor_choice {
         EditorChoice::ExternalEditor(editor) => FileTarget::ExternalEditor(editor),
         EditorChoice::SystemDefault => FileTarget::SystemDefault,
         EditorChoice::Warp | EditorChoice::EnvEditor => unreachable!("Already matched above"),
