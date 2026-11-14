@@ -53,14 +53,100 @@ fn test_resolve_file_target_warp_uses_default_layout() {
     assert_eq!(target, FileTarget::CodeEditor(EditorLayout::NewTab));
 }
 
+#[test]
+#[cfg(feature = "local_fs")]
+fn test_unknown_text_uses_warp_with_system_default() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("unknown");
+    std::fs::write(&path, b"plain UTF-8 text\n").unwrap();
+
+    let target = resolve_file_target_with_editor_choice(
+        &path,
+        EditorChoice::SystemDefault,
+        true,
+        EditorLayout::SplitPane,
+        None,
+    );
+
+    assert_eq!(target, FileTarget::CodeEditor(EditorLayout::SplitPane));
+}
+
+#[test]
+#[cfg(feature = "local_fs")]
+fn test_configured_text_pattern_handles_unknown_new_file() {
+    let patterns = vec!["*.template".to_string()];
+    let path = Path::new("email.template");
+
+    assert_eq!(
+        is_file_openable_in_warp_with_patterns(path, &patterns),
+        Some(OpenableFileType::Text)
+    );
+
+    let target = resolve_file_target_with_options(
+        path,
+        FileOpenOptions {
+            editor_choice: EditorChoice::SystemDefault,
+            prefer_markdown_viewer: true,
+            default_layout: EditorLayout::SplitPane,
+            layout: None,
+            additional_text_file_patterns: &patterns,
+        },
+    );
+    assert_eq!(target, FileTarget::CodeEditor(EditorLayout::SplitPane));
+}
+
+#[test]
+#[cfg(feature = "local_fs")]
+fn configured_patterns_do_not_override_known_binary_extensions() {
+    let patterns = vec!["*.bin".to_string()];
+    assert_eq!(
+        is_file_openable_in_warp_with_patterns(Path::new("payload.bin"), &patterns),
+        None
+    );
+}
+
+#[test]
+#[cfg(feature = "local_fs")]
+fn test_unknown_dotfiles_use_warp_with_system_default() {
+    for filename in [".gitmodules", ".dockerignore", ".agent-session-identity"] {
+        let target = resolve_file_target_with_editor_choice(
+            Path::new(filename),
+            EditorChoice::SystemDefault,
+            true,
+            EditorLayout::NewTab,
+            None,
+        );
+
+        assert_eq!(
+            target,
+            FileTarget::CodeEditor(EditorLayout::NewTab),
+            "{filename} should use Warp's text fallback"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "local_fs")]
+fn test_unknown_text_preserves_explicit_external_editor() {
+    let target = resolve_file_target_with_editor_choice(
+        Path::new(".gitmodules"),
+        EditorChoice::ExternalEditor(Editor::VSCode),
+        true,
+        EditorLayout::SplitPane,
+        None,
+    );
+
+    assert_eq!(target, FileTarget::ExternalEditor(Editor::VSCode));
+}
+
 /// `file.open` from local control relies on this resolver never routing to an
 /// external editor or the system default app, even when user settings prefer one.
 #[test]
 #[cfg(feature = "local_fs")]
 fn test_resolve_file_target_to_open_in_warp_never_leaves_warp() {
     use crate::util::file::external_editor::settings::{
-        OpenCodePanelsFileEditor, OpenConversationLayoutPreference, OpenFileEditor, OpenFileLayout,
-        PreferMarkdownViewer, PreferTabbedEditorView,
+        AdditionalTextFilePatterns, OpenCodePanelsFileEditor, OpenConversationLayoutPreference,
+        OpenFileEditor, OpenFileLayout, PreferMarkdownViewer, PreferTabbedEditorView,
     };
 
     let settings = EditorSettings {
@@ -69,6 +155,7 @@ fn test_resolve_file_target_to_open_in_warp_never_leaves_warp() {
             EditorChoice::ExternalEditor(Editor::VSCode),
         )),
         open_file_layout: OpenFileLayout::new(None),
+        additional_text_file_patterns: AdditionalTextFilePatterns::new(None),
         prefer_markdown_viewer: PreferMarkdownViewer::new(Some(false)),
         prefer_tabbed_editor_view: PreferTabbedEditorView::new(None),
         open_conversation_layout_preference: OpenConversationLayoutPreference::new(None),

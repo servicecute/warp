@@ -54,7 +54,7 @@ use crate::util::file::external_editor::EditorSettings;
 use crate::util::openable_file_type::FileTarget;
 #[cfg(feature = "local_fs")]
 use crate::util::openable_file_type::{
-    EditorLayout, is_markdown_file, resolve_file_target_with_editor_choice,
+    EditorLayout, FileOpenOptions, is_markdown_file, resolve_file_target_with_options,
 };
 use crate::workspace::WorkspaceAction;
 use crate::workspace::view::conversation_list::view::{
@@ -904,12 +904,15 @@ impl LeftPanelView {
 
                 let settings = EditorSettings::as_ref(ctx);
                 let target = match location {
-                    LocalOrRemotePath::Local(path) => resolve_file_target_with_editor_choice(
+                    LocalOrRemotePath::Local(path) => resolve_file_target_with_options(
                         path,
-                        *settings.open_code_panels_file_editor,
-                        *settings.prefer_markdown_viewer,
-                        *settings.open_file_layout,
-                        None,
+                        FileOpenOptions {
+                            editor_choice: *settings.open_code_panels_file_editor,
+                            prefer_markdown_viewer: *settings.prefer_markdown_viewer,
+                            default_layout: *settings.open_file_layout,
+                            layout: None,
+                            additional_text_file_patterns: &settings.additional_text_file_patterns,
+                        },
                     ),
                     // Local-fs-based target resolution can't inspect remote
                     // files; mirror the file tree's remote handling (code
