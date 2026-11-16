@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
-use embedded::{HandlebarsTokenKind, handlebars_tokens, regions_for};
+use embedded::{BuildTokenKind, HandlebarsTokenKind, build_tokens, handlebars_tokens, regions_for};
 use futures::stream::AbortHandle;
 use languages::{EmbeddedLanguage, Language};
 use parking_lot::Mutex;
@@ -52,6 +52,7 @@ enum EmbeddedHighlighter {
         highlight_query: arborium::tree_sitter::Query,
     },
     Handlebars,
+    BuildFile(EmbeddedLanguage),
 }
 
 /// Single-entry cache for highlight queries.
@@ -139,6 +140,9 @@ impl SyntaxTreeState {
                     })
                 }
                 EmbeddedLanguage::Handlebars => Some(EmbeddedHighlighter::Handlebars),
+                EmbeddedLanguage::Makefile | EmbeddedLanguage::Justfile => {
+                    Some(EmbeddedHighlighter::BuildFile(*embedded_language))
+                }
             })
             .collect();
 
@@ -265,6 +269,27 @@ impl SyntaxTreeState {
                                 HandlebarsTokenKind::String => self.color_map.string_color,
                                 HandlebarsTokenKind::Number => self.color_map.number_color,
                                 HandlebarsTokenKind::Comment => self.color_map.comment_color,
+                            };
+                            let char_start = source[..token.range.start].chars().count();
+                            let char_end = source[..token.range.end].chars().count();
+                            let highlight_range =
+                                CharOffset::from(char_start)..CharOffset::from(char_end);
+                            if ranges.iter().any(|range| {
+                                range.start <= highlight_range.end
+                                    && highlight_range.start <= range.end
+                            }) {
+                                combined_highlights.insert(highlight_range, color);
+                            }
+                        }
+                    }
+                    EmbeddedHighlighter::BuildFile(language) => {
+                        for token in build_tokens(&source, *language) {
+                            let color = match token.kind {
+                                BuildTokenKind::Comment => self.color_map.comment_color,
+                                BuildTokenKind::Function => self.color_map.function_color,
+                                BuildTokenKind::Keyword => self.color_map.keyword_color,
+                                BuildTokenKind::Property => self.color_map.property_color,
+                                BuildTokenKind::Punctuation => self.color_map.comment_color,
                             };
                             let char_start = source[..token.range.start].chars().count();
                             let char_end = source[..token.range.end].chars().count();

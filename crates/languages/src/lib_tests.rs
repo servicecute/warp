@@ -99,11 +99,11 @@ fn mjml_standard_fixture_has_html_highlight_captures() {
 
     let capture_names = language.highlight_query.capture_names();
     assert!(
-        capture_names.iter().any(|name| *name == "tag"),
+        capture_names.contains(&"tag"),
         "the HTML highlight query should expose tag captures"
     );
     assert!(
-        capture_names.iter().any(|name| *name == "string"),
+        capture_names.contains(&"string"),
         "the HTML highlight query should expose string captures"
     );
 
@@ -199,6 +199,34 @@ fn local_command_extension_resolves_to_shell() {
     let language = language_by_local_filename(Path::new("script.command"))
         .expect("`.command` files should resolve to a language");
     assert_eq!(language.display_name(), "Shell");
+}
+
+#[test]
+fn makefile_names_resolve_to_makefile() {
+    for filename in [
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "project.mk",
+        "project.mak",
+    ] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to Makefile"));
+        assert_eq!(language.display_name(), "Makefile", "{filename}");
+    }
+}
+
+#[test]
+fn justfile_names_resolve_to_justfile() {
+    for filename in ["Justfile", "justfile", ".justfile", "project.just"] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to Justfile"));
+        assert_eq!(language.display_name(), "Justfile", "{filename}");
+    }
 }
 
 /// `.md` and `.markdown` should resolve to the Markdown language so the editor applies

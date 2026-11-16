@@ -3,6 +3,21 @@ use std::ops::Range;
 use languages::EmbeddedLanguage;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BuildTokenKind {
+    Comment,
+    Function,
+    Keyword,
+    Property,
+    Punctuation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BuildToken {
+    pub range: Range<usize>,
+    pub kind: BuildTokenKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HandlebarsTokenKind {
     Delimiter,
     Keyword,
@@ -27,6 +42,192 @@ pub(crate) fn regions_for(source: &str, language: EmbeddedLanguage) -> Vec<Range
     match language {
         EmbeddedLanguage::Css => mjml_css_regions(source),
         EmbeddedLanguage::Handlebars => Vec::new(),
+        EmbeddedLanguage::Makefile | EmbeddedLanguage::Justfile => Vec::new(),
+    }
+}
+
+pub(crate) fn build_tokens(source: &str, language: EmbeddedLanguage) -> Vec<BuildToken> {
+    let mut tokens = Vec::new();
+    let mut line_start = 0;
+
+    for line in source.split_inclusive('\n') {
+        let line_end = line_start + line.trim_end_matches(['\n', '\r']).len();
+        let content = &source[line_start..line_end];
+        let trimmed = content.trim_start();
+        let leading = content.len() - trimmed.len();
+
+        if trimmed.starts_with('#') {
+            tokens.push(BuildToken {
+                range: line_start + leading..line_end,
+                kind: BuildTokenKind::Comment,
+            });
+        } else if !trimmed.is_empty() && !content.starts_with('\t') && !content.starts_with(' ') {
+            let first_word_end = trimmed
+                .find(|c: char| c.is_whitespace())
+                .unwrap_or(trimmed.len());
+            let first_word = &trimmed[..first_word_end];
+            if is_build_keyword(first_word, language) {
+                tokens.push(BuildToken {
+                    range: line_start + leading..line_start + leading + first_word_end,
+                    kind: BuildTokenKind::Keyword,
+                });
+            }
+
+            if let Some(colon) = find_unquoted(content, ':')
+                && !content[..colon].contains('=')
+                && colon > 0
+            {
+                let target_end = content[..colon].trim_end().len();
+                if target_end > 0 {
+                    tokens.push(BuildToken {
+                        range: line_start..line_start + target_end,
+                        kind: BuildTokenKind::Function,
+                    });
+                    tokens.push(BuildToken {
+                        range: line_start + colon..line_start + colon + 1,
+                        kind: BuildTokenKind::Punctuation,
+                    });
+                }
+            }
+        }
+
+        if let Some((operator_start, operator_end)) = find_assignment(content) {
+            let name_end = content[..operator_start].trim_end().len();
+            let name_start = content[..name_end]
+                .rfind(|character: char| character.is_whitespace())
+                .map_or(0, |index| index + 1);
+            if name_start < name_end {
+                tokens.push(BuildToken {
+                    range: line_start + name_start..line_start + name_end,
+                    kind: BuildTokenKind::Property,
+                });
+                tokens.push(BuildToken {
+                    range: line_start + operator_start..line_start + operator_end,
+                    kind: BuildTokenKind::Punctuation,
+                });
+            }
+        }
+
+        variable_tokens(source, line_start, line_end, &mut tokens);
+        if language == EmbeddedLanguage::Justfile {
+            interpolation_tokens(source, line_start, line_end, &mut tokens);
+        }
+
+        line_start += line.len();
+    }
+
+    tokens
+}
+
+fn is_build_keyword(word: &str, language: EmbeddedLanguage) -> bool {
+    match language {
+        EmbeddedLanguage::Makefile => matches!(
+            word,
+            "define"
+                | "endef"
+                | "include"
+                | "-include"
+                | "export"
+                | "override"
+                | "private"
+                | "vpath"
+                | "undefine"
+                | "ifeq"
+                | "ifneq"
+                | "ifdef"
+                | "ifndef"
+                | "else"
+                | "endif"
+        ),
+        EmbeddedLanguage::Justfile => matches!(
+            word,
+            "set" | "import" | "mod" | "export" | "alias" | "private" | "script"
+        ),
+        EmbeddedLanguage::Css | EmbeddedLanguage::Handlebars => false,
+    }
+}
+
+fn find_assignment(line: &str) -> Option<(usize, usize)> {
+    ["?=", ":=", "+=", "!=", "="]
+        .iter()
+        .filter_map(|operator| {
+            line.find(operator)
+                .map(|start| (start, start + operator.len()))
+        })
+        .min_by_key(|(start, _)| *start)
+}
+
+fn find_unquoted(line: &str, needle: char) -> Option<usize> {
+    let mut quote = None;
+    for (index, character) in line.char_indices() {
+        match character {
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            _ if character == needle && quote.is_none() => return Some(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn variable_tokens(source: &str, start: usize, end: usize, tokens: &mut Vec<BuildToken>) {
+    let line = &source[start..end];
+    let mut offset = 0;
+    while let Some(relative) = line[offset..]
+        .find("$(")
+        .or_else(|| line[offset..].find("${"))
+    {
+        let variable_start = offset + relative;
+        let close = line[variable_start + 2..]
+            .find(if line[variable_start..].starts_with("$(") {
+                ')'
+            } else {
+                '}'
+            })
+            .map(|index| variable_start + 3 + index)
+            .unwrap_or(line.len());
+        tokens.push(BuildToken {
+            range: start + variable_start..start + close,
+            kind: BuildTokenKind::Property,
+        });
+        offset = close.max(variable_start + 2);
+        if offset >= line.len() {
+            break;
+        }
+    }
+}
+
+fn interpolation_tokens(source: &str, start: usize, end: usize, tokens: &mut Vec<BuildToken>) {
+    let line = &source[start..end];
+    let mut offset = 0;
+    while let Some(relative) = line[offset..].find("{{") {
+        let interpolation_start = offset + relative;
+        let interpolation_end = line[interpolation_start + 2..]
+            .find("}}")
+            .map(|index| interpolation_start + 4 + index)
+            .unwrap_or(line.len());
+        tokens.push(BuildToken {
+            range: start + interpolation_start..start + interpolation_start + 2,
+            kind: BuildTokenKind::Punctuation,
+        });
+        if interpolation_end > interpolation_start + 2 {
+            tokens.push(BuildToken {
+                range: start + interpolation_start + 2..start + interpolation_end - 2,
+                kind: BuildTokenKind::Property,
+            });
+        }
+        if interpolation_end <= line.len()
+            && line[interpolation_end.saturating_sub(2)..].starts_with("}}")
+        {
+            tokens.push(BuildToken {
+                range: start + interpolation_end - 2..start + interpolation_end,
+                kind: BuildTokenKind::Punctuation,
+            });
+        }
+        offset = interpolation_end.max(interpolation_start + 2);
+        if offset >= line.len() {
+            break;
+        }
     }
 }
 
@@ -261,7 +462,7 @@ fn is_helper(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{HandlebarsTokenKind, mjml_css_regions, regions_for};
+    use super::{BuildTokenKind, HandlebarsTokenKind, build_tokens, mjml_css_regions, regions_for};
     use arborium::tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
     use languages::EmbeddedLanguage;
 
@@ -382,6 +583,54 @@ mod tests {
             !tokens
                 .iter()
                 .any(|token| source[token.range.clone()].contains("not-a-template"))
+        );
+    }
+
+    #[test]
+    fn makefile_tokens_cover_targets_directives_assignments_and_variables() {
+        let source = "include config.mk\nCC := cc\n.PHONY: all\nall: $(OBJECTS)\n\t$(CC) -o app\n# comment\n";
+        let tokens = build_tokens(source, EmbeddedLanguage::Makefile);
+
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Keyword && &source[token.range.clone()] == "include"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Property && &source[token.range.clone()] == "CC"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Function && &source[token.range.clone()] == ".PHONY"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Property && &source[token.range.clone()] == "$(OBJECTS)"
+        }));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == BuildTokenKind::Comment)
+        );
+    }
+
+    #[test]
+    fn justfile_tokens_cover_recipes_directives_assignments_and_interpolation() {
+        let source = "set shell := [\"bash\", \"-cu\"]\nname := \"warp\"\nbuild: name\n    echo {{name}}\n# comment\n";
+        let tokens = build_tokens(source, EmbeddedLanguage::Justfile);
+
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Keyword && &source[token.range.clone()] == "set"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Function && &source[token.range.clone()] == "build"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Punctuation && &source[token.range.clone()] == "{{"
+        }));
+        assert!(tokens.iter().any(|token| {
+            token.kind == BuildTokenKind::Property && &source[token.range.clone()] == "name"
+        }));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == BuildTokenKind::Comment)
         );
     }
 }

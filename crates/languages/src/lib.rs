@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 38] = [
+pub const SUPPORTED_LANGUAGES: [&str; 40] = [
     "rust",
     "golang",
     "yaml",
@@ -57,6 +57,8 @@ pub const SUPPORTED_LANGUAGES: [&str; 38] = [
     "dockerfile",
     "nix",
     "markdown",
+    "makefile",
+    "justfile",
 ];
 
 /// Registry that holds all of the supported languages.
@@ -160,6 +162,12 @@ fn language_by_filename_parts(
             "Dockerfile" | "Containerfile" | "dockerfile" | "containerfile" => {
                 return language_by_name("dockerfile");
             }
+            "Makefile" | "makefile" | "GNUmakefile" => {
+                return language_by_name("makefile");
+            }
+            "Justfile" | "justfile" | ".justfile" => {
+                return language_by_name("justfile");
+            }
             _ => {
                 // Also match Dockerfile variants like Dockerfile.dev, Dockerfile.prod
                 if filename.starts_with("Dockerfile.") || filename.starts_with("Containerfile.") {
@@ -207,6 +215,8 @@ fn language_by_filename_parts(
         "xml" => language_by_name("xml"),
         "vue" => language_by_name("vue"),
         "dockerfile" => language_by_name("dockerfile"),
+        "mk" | "mak" | "makefile" => language_by_name("makefile"),
+        "just" => language_by_name("justfile"),
         "md" | "markdown" => language_by_name("markdown"),
         _ => None,
     }
@@ -242,6 +252,8 @@ pub struct Language {
 pub enum EmbeddedLanguage {
     Css,
     Handlebars,
+    Makefile,
+    Justfile,
 }
 
 impl Language {
@@ -278,6 +290,7 @@ fn to_arborium_name(lang: &str) -> &str {
         "handlebars-json" => "json",
         "objective-c" => "objc",
         "sql" => "sql",
+        "makefile" | "justfile" => "bash",
         other => other,
     }
 }
@@ -323,6 +336,7 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "vue" => Some(&arborium::lang_vue::HIGHLIGHTS_QUERY),
         "dockerfile" => Some(arborium::lang_dockerfile::HIGHLIGHTS_QUERY),
         "markdown" => Some(arborium::lang_markdown::HIGHLIGHTS_QUERY),
+        "makefile" | "justfile" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         _ => None,
     }
 }
@@ -369,6 +383,8 @@ fn load_language(lang: &str) -> Option<Language> {
             "html" | "json" | "handlebars" | "handlebars-json" => {
                 vec![EmbeddedLanguage::Handlebars]
             }
+            "makefile" => vec![EmbeddedLanguage::Makefile],
+            "justfile" => vec![EmbeddedLanguage::Justfile],
             _ => Vec::new(),
         },
     })
