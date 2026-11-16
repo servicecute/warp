@@ -371,8 +371,7 @@ fn load_language(lang: &str) -> Option<Language> {
             .expect("SurrealQL highlight query should be embedded")
     } else {
         let highlight_query_str = get_arborium_highlight_query(lang)?;
-        Query::new(&grammar, highlight_query_str)
-            .expect("arborium highlight query should be valid")
+        Query::new(&grammar, highlight_query_str).expect("arborium highlight query should be valid")
     };
 
     let indents_query_path = [lang, "indents.scm"].join("\\");

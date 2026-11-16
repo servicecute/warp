@@ -282,5 +282,8 @@ fn surrealql_standard_fixture_loads_and_highlights() {
         capture_count += query_match.captures.len();
     }
 
-    assert!(capture_count > 0, "SurrealQL should produce highlight captures");
+    assert!(
+        capture_count > 0,
+        "SurrealQL should produce highlight captures"
+    );
 }
