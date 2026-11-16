@@ -7642,6 +7642,7 @@ dependencies = [
  "rust-embed 8.7.2",
  "serde",
  "serde_yaml 0.8.26",
+ "surrealguard-tree-sitter-surrealql",
  "warp_editor",
  "warp_util",
 ]
@@ -13346,6 +13347,16 @@ dependencies = [
  "rand 0.8.6",
  "sum_tree",
  "warp_errors",
+]
+
+[[package]]
+name = "surrealguard-tree-sitter-surrealql"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ab7d8bd1d10b442ff2e8295a0299bbc445d6b9f67b4b74c8cea2de99facf65"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]

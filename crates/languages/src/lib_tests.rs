@@ -245,3 +245,42 @@ fn markdown_extensions_resolve_to_markdown() {
         );
     }
 }
+
+#[test]
+fn surrealql_extension_resolves_to_surrealql() {
+    for filename in ["schema.surql", "query.surql"] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to SurrealQL"));
+        assert_eq!(language.display_name(), "SurrealQL");
+    }
+}
+
+#[test]
+fn surrealql_standard_fixture_loads_and_highlights() {
+    let language = load_language("surrealql").expect("SurrealQL should load");
+    let fixture = include_str!("../grammars/surrealql/standard_fixture.surql");
+    let mut parser = arborium::tree_sitter::Parser::new();
+    parser
+        .set_language(&language.grammar)
+        .expect("SurrealQL grammar should load");
+    let tree = parser
+        .parse(fixture, None)
+        .expect("SurrealQL fixture should parse");
+
+    assert!(!tree.root_node().has_error());
+
+    let mut cursor = arborium::tree_sitter::QueryCursor::new();
+    let mut captures = cursor.captures(
+        &language.highlight_query,
+        tree.root_node(),
+        fixture.as_bytes(),
+    );
+    let mut capture_count = 0;
+    while let Some((query_match, _)) = captures.next() {
+        capture_count += query_match.captures.len();
+    }
+
+    assert!(capture_count > 0, "SurrealQL should produce highlight captures");
+}

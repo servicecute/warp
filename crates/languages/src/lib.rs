@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 40] = [
+pub const SUPPORTED_LANGUAGES: [&str; 41] = [
     "rust",
     "golang",
     "yaml",
@@ -50,6 +50,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 40] = [
     "powershell",
     "elixir",
     "sql",
+    "surrealql",
     "starlark",
     "objective-c",
     "xml",
@@ -210,6 +211,7 @@ fn language_by_filename_parts(
         "ps1" | "pwsh" => language_by_name("powershell"),
         "ex" | "exs" => language_by_name("elixir"),
         "sql" => language_by_name("sql"),
+        "surql" => language_by_name("surrealql"),
         "bzl" | "bazel" => language_by_name("starlark"),
         "m" | "mm" => language_by_name("objective-c"),
         "xml" => language_by_name("xml"),
@@ -290,6 +292,7 @@ fn to_arborium_name(lang: &str) -> &str {
         "handlebars-json" => "json",
         "objective-c" => "objc",
         "sql" => "sql",
+        "surrealql" => "surrealql",
         "makefile" | "justfile" => "bash",
         other => other,
     }
@@ -343,7 +346,11 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
 
 fn load_language(lang: &str) -> Option<Language> {
     let arborium_name = to_arborium_name(lang);
-    let grammar = arborium::get_language(arborium_name)?;
+    let grammar = if lang == "surrealql" {
+        tree_sitter_surrealql::LANGUAGE.into()
+    } else {
+        arborium::get_language(arborium_name)?
+    };
 
     let config_path = [lang, "config.yaml"].join("\\");
     let config = load_yaml(&config_path);
@@ -359,9 +366,14 @@ fn load_language(lang: &str) -> Option<Language> {
         })
         .collect();
 
-    let highlight_query_str = get_arborium_highlight_query(lang)?;
-    let highlight_query = Query::new(&grammar, highlight_query_str)
-        .expect("arborium highlight query should be valid");
+    let highlight_query = if lang == "surrealql" {
+        load_query("surrealql/highlights.scm", &grammar)
+            .expect("SurrealQL highlight query should be embedded")
+    } else {
+        let highlight_query_str = get_arborium_highlight_query(lang)?;
+        Query::new(&grammar, highlight_query_str)
+            .expect("arborium highlight query should be valid")
+    };
 
     let indents_query_path = [lang, "indents.scm"].join("\\");
     let indents_query = load_query(&indents_query_path, &grammar);
