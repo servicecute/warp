@@ -19,6 +19,11 @@ not be mixed into grammar-only pull requests.
 | 8 | Handlebars syntax highlighting | In PR #6 | MJML baseline; template-token design |
 | 9 | Embedded-language highlighting foundation | In PR #7 | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
+| 11 | Context-aware SQL/SurrealQL highlighting in source strings | Planned | Embedded-language highlighting foundation; host-language grammar support |
+| 12 | Gradle Groovy syntax highlighting | Planned | None |
+| 13 | Android/mobile configuration highlighting | Planned | None |
+| 14 | iOS XML resource and project-file highlighting | Planned | None |
+| 15 | React Native stylesheet highlighting | Planned | None |
 
 ## Task 1 — Dart syntax highlighting
 
@@ -248,6 +253,48 @@ Acceptance criteria:
 - Stale token responses cannot overwrite newer document state.
 - Performance remains acceptable for large files.
 - Manual review covers theme contrast and agent-opened files.
+
+## Task 11 — Context-aware SQL/SurrealQL highlighting in source strings
+
+Status: Planned.
+
+Highlight statically traceable SQL or SurrealQL fragments embedded in Rust,
+TypeScript, and Gleam source files. Query text may be passed directly to a
+database call or stored in a local variable first. The feature must preserve
+host-language highlighting for interpolated expressions and dynamically
+constructed fragments.
+
+Implementation scope:
+
+- Recognize query call sites such as `.query(...)`, `query_with(...)`, and
+  equivalent configured database APIs.
+- Resolve same-function local variables passed as query arguments, including
+  `query` and `sql` bindings and simple aliases.
+- Highlight static portions of ordinary strings, raw strings, template
+  literals, string concatenations, `format!` calls, and Gleam `<>` expressions.
+- Keep Rust, TypeScript, and Gleam expressions/interpolations owned by the host
+  grammar.
+- Start with the existing SQL grammar as the fallback; add a dedicated
+  SurrealQL grammar only where SQL coverage is materially insufficient.
+- Recover cleanly for incomplete strings, malformed queries, and unresolved
+  dynamic values without blocking host-language highlighting.
+- Bound analysis to local, statically traceable source regions; do not add
+  arbitrary whole-program data-flow analysis.
+
+Acceptance criteria:
+
+- Direct and variable-backed query strings highlight in Rust and TypeScript.
+- Gleam query builders and string concatenations highlight their static query
+  fragments once Gleam has a registered host grammar.
+- Raw strings, multiline strings, template literals, interpolation, and
+  incomplete edits have focused fixtures.
+- Dynamic expressions remain visibly host-language code.
+- Query highlighting does not recolor unrelated strings, comments, URLs, or
+  ordinary prose.
+- Focused syntax-tree tests verify range mapping, local-variable resolution,
+  precedence, and recovery behavior.
+- Manual review confirms query colors remain distinct from host-language string
+  delimiters and interpolated expressions.
 
 ## Pull request rules
 
