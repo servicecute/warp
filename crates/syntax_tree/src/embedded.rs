@@ -43,7 +43,423 @@ pub(crate) fn regions_for(source: &str, language: EmbeddedLanguage) -> Vec<Range
         EmbeddedLanguage::Css => mjml_css_regions(source),
         EmbeddedLanguage::Handlebars => Vec::new(),
         EmbeddedLanguage::Makefile | EmbeddedLanguage::Justfile => Vec::new(),
+        EmbeddedLanguage::Sql => query_regions(source),
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StringLiteral {
+    content_ranges: Vec<Range<usize>>,
+    full_range: Range<usize>,
+}
+
+/// Finds static string fragments passed to query-like calls or referenced by
+/// a local query variable. The scanner deliberately stays lexical: it does
+/// not attempt whole-program data-flow or infer arbitrary runtime values.
+fn query_regions(source: &str) -> Vec<Range<usize>> {
+    let strings = string_literals(source);
+    let calls = query_call_arguments(source);
+    let mut regions = Vec::new();
+
+    for argument in calls {
+        let direct_strings = strings
+            .iter()
+            .filter(|literal| argument.contains(&literal.full_range.start))
+            .collect::<Vec<_>>();
+        if !direct_strings.is_empty() {
+            regions.extend(
+                direct_strings
+                    .into_iter()
+                    .flat_map(|literal| literal.content_ranges.iter().cloned()),
+            );
+            continue;
+        }
+
+        let argument_text = source[argument.clone()].trim();
+        let Some(identifier) = simple_identifier(argument_text) else {
+            continue;
+        };
+        collect_local_query_regions(
+            source,
+            strings.as_slice(),
+            identifier,
+            argument.start,
+            &mut Vec::new(),
+            &mut regions,
+        );
+    }
+
+    regions.sort_by_key(|range| (range.start, range.end));
+    regions.dedup();
+    regions
+}
+
+fn collect_local_query_regions(
+    source: &str,
+    strings: &[StringLiteral],
+    identifier: &str,
+    before: usize,
+    visited: &mut Vec<String>,
+    regions: &mut Vec<Range<usize>>,
+) {
+    if visited.iter().any(|seen| seen == identifier) {
+        return;
+    }
+    visited.push(identifier.to_string());
+    let Some(assignment) = local_assignment(source, identifier, before) else {
+        visited.pop();
+        return;
+    };
+    let expression_start = source[assignment.start..]
+        .find('=')
+        .map_or(assignment.end, |offset| assignment.start + offset + 1);
+    let expression = source[expression_start..assignment.end].trim();
+    if let Some(alias) = simple_identifier(expression) {
+        collect_local_query_regions(source, strings, alias, assignment.start, visited, regions);
+    } else {
+        regions.extend(
+            strings
+                .iter()
+                .filter(|literal| {
+                    literal.full_range.start >= assignment.start
+                        && literal.full_range.end <= assignment.end
+                })
+                .flat_map(|literal| literal.content_ranges.iter().cloned()),
+        );
+    }
+    visited.pop();
+}
+
+pub(crate) fn is_surrealql_query(source: &str) -> bool {
+    let lower = source.to_ascii_lowercase();
+    [
+        "define ",
+        "relate ",
+        "record<",
+        "fetch ",
+        "live select",
+        "upsert ",
+        "info for",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+        || lower.contains("->")
+        || lower.contains("::")
+}
+
+fn simple_identifier(text: &str) -> Option<&str> {
+    let text = text.trim();
+    (!text.is_empty()
+        && text
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric()))
+    .then_some(text)
+}
+
+fn query_call_arguments(source: &str) -> Vec<Range<usize>> {
+    let mut arguments = Vec::new();
+    let mut cursor = 0;
+    while cursor < source.len() {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .expect("cursor should be in source");
+        if character == '/' && source[cursor..].starts_with("//") {
+            cursor = source[cursor..]
+                .find('\n')
+                .map_or(source.len(), |offset| cursor + offset);
+            continue;
+        }
+        if character == '/' && source[cursor..].starts_with("/*") {
+            cursor = source[cursor + 2..]
+                .find("*/")
+                .map_or(source.len(), |offset| cursor + offset + 4);
+            continue;
+        }
+        if character == 'r'
+            && let Some(literal) = raw_string_literal(source, cursor)
+        {
+            cursor = literal.full_range.end;
+            continue;
+        }
+        if matches!(character, '"' | '\'' | '`') {
+            cursor = skip_string(source, cursor);
+            continue;
+        }
+        if !source[cursor..].starts_with("query") {
+            cursor += character.len_utf8();
+            continue;
+        }
+        let start = cursor;
+        let end = start + "query".len();
+        let before_is_identifier = start > 0
+            && source[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|character| character == '_' || character.is_ascii_alphanumeric());
+        let is_query_with = source[end..].starts_with("_with")
+            && !source[end + "_with".len()..]
+                .chars()
+                .next()
+                .is_some_and(|character| character == '_' || character.is_ascii_alphanumeric());
+        let after_is_identifier = source[end..]
+            .chars()
+            .next()
+            .is_some_and(|character| character == '_' || character.is_ascii_alphanumeric());
+        if before_is_identifier || (after_is_identifier && !is_query_with) {
+            cursor = end;
+            continue;
+        }
+
+        let mut open = end;
+        while source[open..].starts_with("_with") {
+            open += "_with".len();
+        }
+        while source[open..]
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+        {
+            open += source[open..]
+                .chars()
+                .next()
+                .expect("whitespace character should exist")
+                .len_utf8();
+        }
+        if !source[open..].starts_with('(') {
+            cursor = end;
+            continue;
+        }
+        if let Some(close) = matching_delimiter(source, open, '(', ')') {
+            let argument_start = open + 1;
+            let argument_end = first_argument_end(source, argument_start, close);
+            arguments.push(argument_start..argument_end);
+            cursor = close + 1;
+        } else {
+            arguments.push(open + 1..source.len());
+            break;
+        }
+    }
+    arguments
+}
+
+fn first_argument_end(source: &str, start: usize, close: usize) -> usize {
+    let mut cursor = start;
+    let mut depth: usize = 0;
+    while cursor < close {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .expect("cursor should be in source");
+        match character {
+            '"' | '\'' | '`' => {
+                cursor = skip_string(source, cursor).min(close);
+                continue;
+            }
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => return cursor,
+            _ => {}
+        }
+        cursor += character.len_utf8();
+    }
+    close
+}
+
+fn matching_delimiter(source: &str, open: usize, opening: char, closing: char) -> Option<usize> {
+    let mut depth = 0;
+    let mut cursor = open;
+    while cursor < source.len() {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .expect("cursor should be in source");
+        match character {
+            '"' | '\'' | '`' => cursor = skip_string(source, cursor),
+            character if character == opening => {
+                depth += 1;
+                cursor += character.len_utf8();
+            }
+            character if character == closing => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(cursor);
+                }
+                cursor += character.len_utf8();
+            }
+            _ => cursor += character.len_utf8(),
+        }
+    }
+    None
+}
+
+fn local_assignment(source: &str, identifier: &str, before: usize) -> Option<Range<usize>> {
+    let mut search_from = 0;
+    let mut result = None;
+    while search_from < before {
+        let Some(relative) = source[search_from..before].find(identifier) else {
+            break;
+        };
+        let name_start = search_from + relative;
+        let name_end = name_start + identifier.len();
+        let valid_name = (name_start == 0
+            || !source[..name_start]
+                .chars()
+                .next_back()
+                .is_some_and(|character| character == '_' || character.is_ascii_alphanumeric()))
+            && (name_end == source.len()
+                || !source[name_end..].chars().next().is_some_and(|character| {
+                    character == '_' || character.is_ascii_alphanumeric()
+                }));
+        if !valid_name {
+            search_from = name_end;
+            continue;
+        }
+        let mut equals = name_end;
+        while source[equals..]
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+        {
+            equals += source[equals..]
+                .chars()
+                .next()
+                .expect("whitespace character should exist")
+                .len_utf8();
+        }
+        if source[equals..].starts_with(':') {
+            let type_end = source[equals..]
+                .find(['=', ';', '\n'])
+                .map_or(before, |offset| equals + offset);
+            let Some(relative) = source[equals..=type_end].find('=') else {
+                search_from = name_end;
+                continue;
+            };
+            equals += relative;
+        }
+        if source[equals..].starts_with('=') {
+            let end = source[equals..]
+                .find(';')
+                .map_or(before, |offset| equals + offset);
+            result = Some(name_start..end);
+        }
+        search_from = name_end;
+    }
+    result
+}
+
+fn string_literals(source: &str) -> Vec<StringLiteral> {
+    let mut literals = Vec::new();
+    let mut cursor = 0;
+    while cursor < source.len() {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .expect("cursor should be in source");
+        if character == '/' && source[cursor..].starts_with("//") {
+            cursor = source[cursor..]
+                .find('\n')
+                .map_or(source.len(), |offset| cursor + offset);
+            continue;
+        }
+        if character == '/' && source[cursor..].starts_with("/*") {
+            cursor = source[cursor + 2..]
+                .find("*/")
+                .map_or(source.len(), |offset| cursor + offset + 4);
+            continue;
+        }
+        if character == 'r'
+            && source[cursor..].contains('"')
+            && let Some(literal) = raw_string_literal(source, cursor)
+        {
+            cursor = literal.full_range.end;
+            literals.push(literal);
+            continue;
+        }
+        if matches!(character, '"' | '\'' | '`') {
+            let literal = quoted_string_literal(source, cursor, character);
+            cursor = literal.full_range.end;
+            literals.push(literal);
+            continue;
+        }
+        cursor += character.len_utf8();
+    }
+    literals
+}
+
+fn raw_string_literal(source: &str, start: usize) -> Option<StringLiteral> {
+    let mut quote = start;
+    while source[quote..].starts_with('#') || source[quote..].starts_with('r') {
+        quote += 1;
+    }
+    if !source[quote..].starts_with('"') {
+        return None;
+    }
+    let hashes = quote - start - 1;
+    let close = format!("\"{}", "#".repeat(hashes));
+    let content_start = quote + 1;
+    let content_end = source[content_start..]
+        .find(&close)
+        .map_or(source.len(), |offset| content_start + offset);
+    Some(StringLiteral {
+        content_ranges: std::iter::once(content_start..content_end).collect(),
+        full_range: start..(content_end + close.len()).min(source.len()),
+    })
+}
+
+fn quoted_string_literal(source: &str, start: usize, quote: char) -> StringLiteral {
+    let content_start = start + quote.len_utf8();
+    let mut cursor = content_start;
+    let mut interpolation_start = content_start;
+    let mut content_ranges = Vec::new();
+    while cursor < source.len() {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .expect("cursor should be in source");
+        if character == '\\' {
+            cursor += 1;
+            if cursor < source.len() {
+                cursor += source[cursor..]
+                    .chars()
+                    .next()
+                    .expect("escaped character should exist")
+                    .len_utf8();
+            }
+            continue;
+        }
+        if quote == '`' && source[cursor..].starts_with("${") {
+            content_ranges.push(interpolation_start..cursor);
+            let interpolation_end = matching_delimiter(source, cursor + 1, '{', '}')
+                .unwrap_or(source.len().saturating_sub(1));
+            cursor = (interpolation_end + 1).min(source.len());
+            interpolation_start = cursor;
+            continue;
+        }
+        if character == quote {
+            content_ranges.push(interpolation_start..cursor);
+            return StringLiteral {
+                content_ranges,
+                full_range: start..cursor + quote.len_utf8(),
+            };
+        }
+        cursor += character.len_utf8();
+    }
+    content_ranges.push(interpolation_start..source.len());
+    StringLiteral {
+        content_ranges,
+        full_range: start..source.len(),
+    }
+}
+
+fn skip_string(source: &str, start: usize) -> usize {
+    if source[start..].starts_with('r')
+        && let Some(literal) = raw_string_literal(source, start)
+    {
+        return literal.full_range.end;
+    }
+    let quote = source[start..].chars().next().expect("quote should exist");
+    quoted_string_literal(source, start, quote).full_range.end
 }
 
 pub(crate) fn build_tokens(source: &str, language: EmbeddedLanguage) -> Vec<BuildToken> {
@@ -143,7 +559,7 @@ fn is_build_keyword(word: &str, language: EmbeddedLanguage) -> bool {
             word,
             "set" | "import" | "mod" | "export" | "alias" | "private" | "script"
         ),
-        EmbeddedLanguage::Css | EmbeddedLanguage::Handlebars => false,
+        EmbeddedLanguage::Css | EmbeddedLanguage::Handlebars | EmbeddedLanguage::Sql => false,
     }
 }
 
@@ -462,7 +878,10 @@ fn is_helper(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{BuildTokenKind, HandlebarsTokenKind, build_tokens, mjml_css_regions, regions_for};
+    use super::{
+        BuildTokenKind, HandlebarsTokenKind, build_tokens, is_surrealql_query, mjml_css_regions,
+        query_regions, regions_for,
+    };
     use arborium::tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
     use languages::EmbeddedLanguage;
 
@@ -632,5 +1051,62 @@ mod tests {
                 .iter()
                 .any(|token| token.kind == BuildTokenKind::Comment)
         );
+    }
+
+    #[test]
+    fn query_regions_find_direct_and_local_variable_queries() {
+        let source = r##"
+let query = r#"SELECT * FROM person WHERE name = $name"#;
+let sql = query;
+let typed_sql: &str = "SELECT * FROM typed_users";
+let prose = "SELECT this is ordinary prose";
+// db.query("SELECT from a comment");
+let comment = "db.query(\\\"SELECT inside a string\\\")";
+db.query(query);
+db.query(sql);
+db.query(typed_sql);
+db.query_with("DEFINE TABLE person SCHEMAFULL;", vars);
+"##;
+        let regions = query_regions(source);
+
+        assert_eq!(regions.len(), 3);
+        assert_eq!(
+            &source[regions[0].clone()],
+            "SELECT * FROM person WHERE name = $name"
+        );
+        assert_eq!(&source[regions[1].clone()], "SELECT * FROM typed_users");
+        assert_eq!(
+            &source[regions[2].clone()],
+            "DEFINE TABLE person SCHEMAFULL;"
+        );
+        assert!(
+            !regions
+                .iter()
+                .any(|range| { source[range.clone()].contains("ordinary prose") })
+        );
+    }
+
+    #[test]
+    fn query_regions_preserve_template_interpolations_and_recover_incomplete_strings() {
+        let source = "client.query(`SELECT * FROM person WHERE id = ${id} AND active = true`);\nclient.query(\"SELECT * FROM\");";
+        let regions = query_regions(source);
+
+        assert_eq!(regions.len(), 3);
+        assert_eq!(
+            &source[regions[0].clone()],
+            "SELECT * FROM person WHERE id = "
+        );
+        assert_eq!(&source[regions[1].clone()], " AND active = true");
+        assert_eq!(&source[regions[2].clone()], "SELECT * FROM");
+        assert!(!regions.iter().any(|range| &source[range.clone()] == "id"));
+    }
+
+    #[test]
+    fn surrealql_query_detection_is_specific_to_surreal_features() {
+        assert!(is_surrealql_query("DEFINE TABLE person SCHEMAFULL;"));
+        assert!(is_surrealql_query(
+            "SELECT * FROM person:tobie->likes->person:jaime"
+        ));
+        assert!(!is_surrealql_query("SELECT * FROM users WHERE id = $1"));
     }
 }

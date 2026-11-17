@@ -12,6 +12,7 @@ arborium.workspace = true
 warpui_core.workspace = true
 warp_editor.workspace = true
 languages.workspace = true
+tree-sitter-surrealql.workspace = true
 futures.workspace = true
 futures-lite.workspace = true
 parking_lot.workspace = true

@@ -256,6 +256,7 @@ pub enum EmbeddedLanguage {
     Handlebars,
     Makefile,
     Justfile,
+    Sql,
 }
 
 impl Language {
@@ -396,6 +397,7 @@ fn load_language(lang: &str) -> Option<Language> {
             }
             "makefile" => vec![EmbeddedLanguage::Makefile],
             "justfile" => vec![EmbeddedLanguage::Justfile],
+            "rust" | "typescript" => vec![EmbeddedLanguage::Sql],
             _ => Vec::new(),
         },
     })

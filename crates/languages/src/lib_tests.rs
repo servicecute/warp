@@ -287,3 +287,11 @@ fn surrealql_standard_fixture_loads_and_highlights() {
         "SurrealQL should produce highlight captures"
     );
 }
+
+#[test]
+fn source_languages_declare_sql_embedded_highlighting() {
+    for language_name in ["rust", "typescript"] {
+        let language = load_language(language_name).expect("source language should load");
+        assert_eq!(language.embedded_languages, vec![EmbeddedLanguage::Sql]);
+    }
+}

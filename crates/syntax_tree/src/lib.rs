@@ -7,7 +7,7 @@ use std::sync::Arc;
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
 use embedded::{BuildTokenKind, HandlebarsTokenKind, build_tokens, handlebars_tokens, regions_for};
 use futures::stream::AbortHandle;
-use languages::{EmbeddedLanguage, Language};
+use languages::{EmbeddedLanguage, Language, language_by_name};
 use parking_lot::Mutex;
 use queries::highlight_query::HighlightQuery;
 pub use queries::highlight_query::{ColorMap, TextSlice};
@@ -53,6 +53,14 @@ enum EmbeddedHighlighter {
     },
     Handlebars,
     BuildFile(EmbeddedLanguage),
+    Query {
+        sql: (
+            arborium::tree_sitter::Language,
+            HighlightQuery,
+            arborium::tree_sitter::Query,
+        ),
+        surrealql: (Arc<Language>, HighlightQuery),
+    },
 }
 
 /// Single-entry cache for highlight queries.
@@ -142,6 +150,29 @@ impl SyntaxTreeState {
                 EmbeddedLanguage::Handlebars => Some(EmbeddedHighlighter::Handlebars),
                 EmbeddedLanguage::Makefile | EmbeddedLanguage::Justfile => {
                     Some(EmbeddedHighlighter::BuildFile(*embedded_language))
+                }
+                EmbeddedLanguage::Sql => {
+                    let sql_grammar = arborium::get_language("sql")?;
+                    let sql_query = arborium::tree_sitter::Query::new(
+                        &sql_grammar,
+                        arborium::lang_sql::HIGHLIGHTS_QUERY,
+                    )
+                    .expect("arborium SQL highlight query should be valid");
+                    let surrealql_language = language_by_name("surrealql")?;
+                    Some(EmbeddedHighlighter::Query {
+                        sql: (
+                            sql_grammar,
+                            HighlightQuery::new(&sql_query, self.color_map),
+                            sql_query,
+                        ),
+                        surrealql: (
+                            surrealql_language.clone(),
+                            HighlightQuery::new(
+                                &surrealql_language.highlight_query,
+                                self.color_map,
+                            ),
+                        ),
+                    })
                 }
             })
             .collect();
@@ -300,6 +331,43 @@ impl SyntaxTreeState {
                                     && highlight_range.start <= range.end
                             }) {
                                 combined_highlights.insert(highlight_range, color);
+                            }
+                        }
+                    }
+                    EmbeddedHighlighter::Query { sql, surrealql } => {
+                        for region in regions_for(&source, EmbeddedLanguage::Sql) {
+                            let embedded_source = &source[region.clone()];
+                            let (grammar, syntax_query, highlight_query) =
+                                if embedded::is_surrealql_query(embedded_source) {
+                                    (
+                                        &surrealql.0.grammar,
+                                        &surrealql.1,
+                                        &surrealql.0.highlight_query,
+                                    )
+                                } else {
+                                    (&sql.0, &sql.1, &sql.2)
+                                };
+                            let mut parser = Parser::new();
+                            parser
+                                .set_language(grammar)
+                                .expect("incompatible query grammar");
+                            let Some(tree) = parser.parse(embedded_source, None) else {
+                                continue;
+                            };
+                            let highlights = syntax_query.get_highlighted_chunks_from_text(
+                                highlight_query,
+                                embedded_source,
+                                &source,
+                                region.start,
+                                &tree,
+                            );
+                            for (highlight_range, color) in highlights.iter() {
+                                if ranges.iter().any(|range| {
+                                    range.start <= highlight_range.end
+                                        && highlight_range.start <= range.end
+                                }) {
+                                    combined_highlights.insert(highlight_range.clone(), *color);
+                                }
                             }
                         }
                     }

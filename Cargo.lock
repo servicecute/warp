@@ -13481,6 +13481,7 @@ dependencies = [
  "rangemap",
  "streaming-iterator",
  "string-offset",
+ "surrealguard-tree-sitter-surrealql",
  "warp_editor",
  "warp_util",
  "warpui",
