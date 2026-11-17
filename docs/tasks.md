@@ -20,7 +20,7 @@ not be mixed into grammar-only pull requests.
 | 9 | Embedded-language highlighting foundation | In PR #7 | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
 | 11 | Context-aware SQL/SurrealQL highlighting in source strings | Planned | Embedded-language highlighting foundation; host-language grammar support |
-| 12 | Gradle Groovy syntax highlighting | In progress | None |
+| 12 | Gradle Groovy syntax highlighting | In PR #13 | None |
 | 13 | Android/mobile configuration highlighting | Planned | None |
 | 14 | Xcode project-file (`.xcodeproj`) highlighting | Planned | None |
 | 15 | Apple property-list (`.plist`) highlighting | Planned | None |
@@ -301,7 +301,7 @@ Acceptance criteria:
 
 ## Task 12 — Gradle Groovy syntax highlighting
 
-Status: In progress.
+Status: In PR #13.
 
 Add dedicated Groovy highlighting for Gradle build scripts instead of routing
 Groovy files through the Java grammar.
