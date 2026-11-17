@@ -22,7 +22,7 @@ not be mixed into grammar-only pull requests.
 | 11 | Context-aware SQL/SurrealQL highlighting in source strings | Planned | Embedded-language highlighting foundation; host-language grammar support |
 | 12 | Gradle Groovy syntax highlighting | In PR #13 | None |
 | 13 | Android/mobile configuration highlighting | Planned | None |
-| 14 | Xcode project-file (`.xcodeproj`) highlighting | In progress | None |
+| 14 | Xcode project-file (`.xcodeproj`) highlighting | In PR #14 | None |
 | 15 | Apple property-list (`.plist`) highlighting | Planned | None |
 | 16 | Xcode build-settings (`.xcconfig`) highlighting | Planned | None |
 | 17 | iOS XML resource highlighting | Planned | None |
@@ -324,7 +324,7 @@ Acceptance criteria:
 
 ## Task 14 — Xcode project-file highlighting
 
-Status: In progress.
+Status: In PR #14.
 
 Add syntax highlighting for Xcode project bundles, including their
 `project.pbxproj` files. Treat the format as a distinct OpenStep-style project
