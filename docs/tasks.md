@@ -19,7 +19,7 @@ not be mixed into grammar-only pull requests.
 | 8 | Handlebars syntax highlighting | In PR #6 | MJML baseline; template-token design |
 | 9 | Embedded-language highlighting foundation | In PR #7 | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
-| 11 | Context-aware SQL/SurrealQL highlighting in source strings | In PR | Embedded-language highlighting foundation; host-language grammar support |
+| 11 | Context-aware SQL/SurrealQL highlighting in source strings | In PR #11 | Embedded-language highlighting foundation; host-language grammar support |
 | 12 | Gradle Groovy syntax highlighting | Planned | None |
 | 13 | Android/mobile configuration highlighting | Planned | None |
 | 14 | iOS XML resource and project-file highlighting | Planned | None |
@@ -86,7 +86,7 @@ Acceptance tests:
 
 ## Task 4 — Erlang syntax highlighting
 
-Status: In PR.
+Status: In PR #11.
 
 Add `.erl` and `.hrl` support in a focused grammar PR.
 
