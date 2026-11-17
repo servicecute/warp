@@ -12,7 +12,7 @@ not be mixed into grammar-only pull requests.
 | 1 | Dart syntax highlighting | In PR #2 | None |
 | 2 | Custom Warp release workflow | In PR #3 | None |
 | 3 | Internal editor text fallback | In PR #8 | None |
-| 4 | Erlang syntax highlighting | Planned | None |
+| 4 | Erlang syntax highlighting | In PR #12 | None |
 | 5 | SurrealQL syntax highlighting | Planned | None |
 | 6 | MJML syntax highlighting | In PR #4 | None |
 | 7 | Embedded CSS highlighting | In PR #5 | MJML syntax highlighting |
@@ -86,7 +86,7 @@ Acceptance tests:
 
 ## Task 4 — Erlang syntax highlighting
 
-Status: Planned.
+Status: In PR #12.
 
 Add `.erl` and `.hrl` support in a focused grammar PR.
 
