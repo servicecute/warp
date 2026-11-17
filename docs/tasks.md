@@ -20,10 +20,13 @@ not be mixed into grammar-only pull requests.
 | 9 | Embedded-language highlighting foundation | In PR #7 | Tasks 7 and 8 |
 | 10 | Semantic highlighting | Future | LSP/semantic-token design |
 | 11 | Context-aware SQL/SurrealQL highlighting in source strings | Planned | Embedded-language highlighting foundation; host-language grammar support |
-| 12 | Gradle Groovy syntax highlighting | Planned | None |
+| 12 | Gradle Groovy syntax highlighting | In progress | None |
 | 13 | Android/mobile configuration highlighting | Planned | None |
-| 14 | iOS XML resource and project-file highlighting | Planned | None |
-| 15 | React Native stylesheet highlighting | Planned | None |
+| 14 | Xcode project-file (`.xcodeproj`) highlighting | Planned | None |
+| 15 | Apple property-list (`.plist`) highlighting | Planned | None |
+| 16 | Xcode build-settings (`.xcconfig`) highlighting | Planned | None |
+| 17 | iOS XML resource highlighting | Planned | None |
+| 18 | React Native stylesheet highlighting | Planned | None |
 
 ## Task 1 — Dart syntax highlighting
 
@@ -295,6 +298,82 @@ Acceptance criteria:
   precedence, and recovery behavior.
 - Manual review confirms query colors remain distinct from host-language string
   delimiters and interpolated expressions.
+
+## Task 12 — Gradle Groovy syntax highlighting
+
+Status: In progress.
+
+Add dedicated Groovy highlighting for Gradle build scripts instead of routing
+Groovy files through the Java grammar.
+
+Implementation scope:
+
+- Register `groovy` with a dedicated Tree-sitter grammar.
+- Map `.gradle`, `.groovy`, `.gvy`, `.gy`, `.gsh`, and `Jenkinsfile` to Groovy.
+- Highlight Gradle DSL constructs, closures, method calls, properties,
+  interpolated strings, operators, declarations, annotations, and comments.
+- Add indentation and bracket-pair configuration.
+- Keep Java filename resolution unchanged.
+
+Acceptance criteria:
+
+- Gradle and Groovy fixtures parse without errors.
+- Gradle/Jenkins filenames resolve to Groovy.
+- Rendered captures cover representative DSL and Groovy constructs.
+- Focused language tests and targeted Clippy pass.
+
+## Task 14 — Xcode project-file highlighting
+
+Status: Planned.
+
+Add syntax highlighting for Xcode project bundles, including their
+`project.pbxproj` files. Treat the format as a distinct OpenStep-style project
+serialization rather than assuming it is ordinary JSON or XML.
+
+Acceptance criteria:
+
+- `.xcodeproj` directories and their `project.pbxproj` contents resolve to the
+  intended language.
+- UUIDs, keys, values, comments, arrays, dictionaries, strings, and build-file
+  relationships receive stable captures.
+- A representative project fixture parses with recovery for common generated
+  formatting.
+- Filename resolution, parser, and rendered-capture tests pass.
+
+## Task 15 — Apple property-list highlighting
+
+Status: Planned.
+
+Add `.plist` support for both XML property lists and the binary-plist-adjacent
+text forms commonly encountered in Apple projects. Preserve XML structure when
+the file is XML while providing useful highlighting for keys, values, arrays,
+dictionaries, and comments.
+
+Acceptance criteria:
+
+- `.plist` resolves correctly.
+- XML declarations, elements, attributes, keys, strings, numbers, booleans,
+  arrays, dictionaries, and comments receive expected captures.
+- Fixtures cover normal Xcode plist files and incomplete edits.
+- Existing XML highlighting is not regressed.
+
+## Task 16 — Xcode build-settings highlighting
+
+Status: Planned.
+
+Add `.xcconfig` support for Xcode build-setting files, including assignments,
+conditional settings, variable expansion, comments, quoted values, and include
+directives. Keep the grammar focused on build configuration rather than trying
+to treat the file as generic shell or INI syntax.
+
+Acceptance criteria:
+
+- `.xcconfig` resolves to a dedicated language entry.
+- Build-setting keys, operators, values, substitutions, conditions, comments,
+  and includes receive stable captures.
+- Fixtures cover inheritance, `$(inherited)`, environment-style expansion,
+  quoted values, and incomplete lines.
+- Filename-resolution, parser, and rendered-capture tests pass.
 
 ## Pull request rules
 

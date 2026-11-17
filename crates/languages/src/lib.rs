@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 42] = [
+pub const SUPPORTED_LANGUAGES: [&str; 43] = [
     "rust",
     "erlang",
     "golang",
@@ -29,6 +29,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 42] = [
     "typescript",
     "tsx",
     "java",
+    "groovy",
     "cpp",
     "shell",
     "csharp",
@@ -170,6 +171,9 @@ fn language_by_filename_parts(
             "Justfile" | "justfile" | ".justfile" => {
                 return language_by_name("justfile");
             }
+            "Jenkinsfile" => {
+                return language_by_name("groovy");
+            }
             _ => {
                 // Also match Dockerfile variants like Dockerfile.dev, Dockerfile.prod
                 if filename.starts_with("Dockerfile.") || filename.starts_with("Containerfile.") {
@@ -189,7 +193,8 @@ fn language_by_filename_parts(
         "jsx" => language_by_name("jsx"),
         "tsx" => language_by_name("tsx"),
         "ts" | "cts" | "mts" => language_by_name("typescript"),
-        "java" | "groovy" | "gvy" | "gy" | "gsh" => language_by_name("java"),
+        "java" => language_by_name("java"),
+        "gradle" | "groovy" | "gvy" | "gy" | "gsh" => language_by_name("groovy"),
         "cpp" | "cxx" | "cc" | "h" | "hh" | "hpp" | "hxx" | "H" | "h++" => language_by_name("cpp"),
         "sh" | "zsh" | "bash" | "command" => language_by_name("shell"),
         "cs" => language_by_name("csharp"),
@@ -312,6 +317,7 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "typescript" => Some(&arborium::lang_typescript::HIGHLIGHTS_QUERY),
         "tsx" => Some(&arborium::lang_tsx::HIGHLIGHTS_QUERY),
         "java" => Some(arborium::lang_java::HIGHLIGHTS_QUERY),
+        "groovy" => Some(include_str!("../grammars/groovy/highlights.scm")),
         "cpp" => Some(&arborium::lang_cpp::HIGHLIGHTS_QUERY),
         "shell" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         "csharp" => Some(arborium::lang_c_sharp::HIGHLIGHTS_QUERY),
@@ -352,6 +358,8 @@ fn load_language(lang: &str) -> Option<Language> {
         arborium_erlang::language().into()
     } else if lang == "surrealql" {
         tree_sitter_surrealql::LANGUAGE.into()
+    } else if lang == "groovy" {
+        dekobon_tree_sitter_groovy::LANGUAGE.into()
     } else {
         arborium::get_language(arborium_name)?
     };

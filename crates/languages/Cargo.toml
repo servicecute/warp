@@ -11,6 +11,7 @@ serde_yaml.workspace = true
 rust-embed.workspace = true
 arborium.workspace = true
 arborium-erlang.workspace = true
+dekobon-tree-sitter-groovy.workspace = true
 tree-sitter-surrealql.workspace = true
 lazy_static.workspace = true
 warp_editor = { path = "../editor" }
