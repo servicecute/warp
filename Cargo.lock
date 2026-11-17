@@ -7666,6 +7666,7 @@ dependencies = [
  "serde",
  "serde_yaml 0.8.26",
  "surrealguard-tree-sitter-surrealql",
+ "tree-sitter-property-list",
  "warp_editor",
  "warp_util",
 ]
@@ -14650,6 +14651,16 @@ name = "tree-sitter-language"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
+
+[[package]]
+name = "tree-sitter-property-list"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ad09719888e9c014134db049654ecf736e12d8fe0c07597b026da1a25ad3572"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree_magic_mini"

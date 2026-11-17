@@ -18,7 +18,7 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 43] = [
+pub const SUPPORTED_LANGUAGES: [&str; 44] = [
     "rust",
     "erlang",
     "golang",
@@ -30,6 +30,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 43] = [
     "tsx",
     "java",
     "groovy",
+    "xcode-project",
     "cpp",
     "shell",
     "csharp",
@@ -195,6 +196,7 @@ fn language_by_filename_parts(
         "ts" | "cts" | "mts" => language_by_name("typescript"),
         "java" => language_by_name("java"),
         "gradle" | "groovy" | "gvy" | "gy" | "gsh" => language_by_name("groovy"),
+        "xcodeproj" | "pbxproj" => language_by_name("xcode-project"),
         "cpp" | "cxx" | "cc" | "h" | "hh" | "hpp" | "hxx" | "H" | "h++" => language_by_name("cpp"),
         "sh" | "zsh" | "bash" | "command" => language_by_name("shell"),
         "cs" => language_by_name("csharp"),
@@ -318,6 +320,7 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "tsx" => Some(&arborium::lang_tsx::HIGHLIGHTS_QUERY),
         "java" => Some(arborium::lang_java::HIGHLIGHTS_QUERY),
         "groovy" => Some(include_str!("../grammars/groovy/highlights.scm")),
+        "xcode-project" => Some(include_str!("../grammars/xcode-project/highlights.scm")),
         "cpp" => Some(&arborium::lang_cpp::HIGHLIGHTS_QUERY),
         "shell" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         "csharp" => Some(arborium::lang_c_sharp::HIGHLIGHTS_QUERY),
@@ -360,6 +363,8 @@ fn load_language(lang: &str) -> Option<Language> {
         tree_sitter_surrealql::LANGUAGE.into()
     } else if lang == "groovy" {
         dekobon_tree_sitter_groovy::LANGUAGE.into()
+    } else if lang == "xcode-project" {
+        tree_sitter_property_list::LANGUAGE.into()
     } else {
         arborium::get_language(arborium_name)?
     };

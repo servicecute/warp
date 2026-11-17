@@ -321,6 +321,48 @@ fn groovy_standard_fixture_loads_and_highlights() {
     );
 }
 
+#[test]
+fn xcode_project_extensions_resolve_to_xcode_project() {
+    for filename in ["App.xcodeproj", "project.pbxproj"] {
+        let path = StandardizedPath::try_new(&format!("/tmp/{filename}"))
+            .expect("test path should be absolute");
+        let language = language_by_filename(&path)
+            .unwrap_or_else(|| panic!("expected {filename} to resolve to Xcode Project"));
+        assert_eq!(language.display_name(), "Xcode Project", "{filename}");
+    }
+}
+
+#[test]
+fn xcode_project_fixture_loads_and_highlights() {
+    let language = load_language("xcode-project").expect("Xcode Project should load");
+    let fixture = include_str!("../grammars/xcode-project/standard_fixture.pbxproj");
+    let mut parser = arborium::tree_sitter::Parser::new();
+    parser
+        .set_language(&language.grammar)
+        .expect("Xcode Project grammar should load");
+    let tree = parser
+        .parse(fixture, None)
+        .expect("Xcode Project fixture should parse");
+
+    assert!(!tree.root_node().has_error());
+
+    let mut cursor = arborium::tree_sitter::QueryCursor::new();
+    let mut captures = cursor.captures(
+        &language.highlight_query,
+        tree.root_node(),
+        fixture.as_bytes(),
+    );
+    let mut capture_count = 0;
+    while let Some((query_match, _)) = captures.next() {
+        capture_count += query_match.captures.len();
+    }
+
+    assert!(
+        capture_count > 0,
+        "Xcode Project should produce highlight captures"
+    );
+}
+
 /// `.md` and `.markdown` should resolve to the Markdown language so the editor applies
 /// syntax highlighting to Markdown source files.
 #[test]
