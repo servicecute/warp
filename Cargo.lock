@@ -783,6 +783,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arborium-erlang"
+version = "2.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88226203e876a69206463ef08508a9f987f455321956eeb81e3e568de2ec9a1d"
+dependencies = [
+ "arborium-sysroot",
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "arborium-go"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7638,6 +7649,7 @@ name = "languages"
 version = "0.0.0"
 dependencies = [
  "arborium",
+ "arborium-erlang",
  "lazy_static",
  "rust-embed 8.7.2",
  "serde",

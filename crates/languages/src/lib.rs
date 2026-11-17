@@ -18,8 +18,9 @@ lazy_static! {
     static ref LANGUAGE_REGISTRY: LanguageRegistry = LanguageRegistry::new();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 41] = [
+pub const SUPPORTED_LANGUAGES: [&str; 42] = [
     "rust",
+    "erlang",
     "golang",
     "yaml",
     "python",
@@ -210,6 +211,7 @@ fn language_by_filename_parts(
         "scala" | "sbt" | "sc" => language_by_name("scala"),
         "ps1" | "pwsh" => language_by_name("powershell"),
         "ex" | "exs" => language_by_name("elixir"),
+        "erl" | "hrl" => language_by_name("erlang"),
         "sql" => language_by_name("sql"),
         "surql" => language_by_name("surrealql"),
         "bzl" | "bazel" => language_by_name("starlark"),
@@ -346,7 +348,9 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
 
 fn load_language(lang: &str) -> Option<Language> {
     let arborium_name = to_arborium_name(lang);
-    let grammar = if lang == "surrealql" {
+    let grammar = if lang == "erlang" {
+        arborium_erlang::language().into()
+    } else if lang == "surrealql" {
         tree_sitter_surrealql::LANGUAGE.into()
     } else {
         arborium::get_language(arborium_name)?
@@ -366,7 +370,10 @@ fn load_language(lang: &str) -> Option<Language> {
         })
         .collect();
 
-    let highlight_query = if lang == "surrealql" {
+    let highlight_query = if lang == "erlang" {
+        Query::new(&grammar, arborium_erlang::HIGHLIGHTS_QUERY)
+            .expect("Arborium Erlang highlight query should be valid")
+    } else if lang == "surrealql" {
         load_query("surrealql/highlights.scm", &grammar)
             .expect("SurrealQL highlight query should be embedded")
     } else {
