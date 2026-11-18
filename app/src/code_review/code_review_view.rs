@@ -142,7 +142,7 @@ use crate::util::git::{BranchEntry, PrInfo};
 #[cfg(feature = "local_fs")]
 use crate::util::openable_file_type::FileTarget;
 #[cfg(feature = "local_fs")]
-use crate::util::openable_file_type::resolve_file_target_with_editor_choice;
+use crate::util::openable_file_type::{FileOpenOptions, resolve_file_target_with_options};
 use crate::view_components::DismissibleToast;
 use crate::view_components::action_button::{
     ActionButton, ActionButtonTheme, AdjoinedSide, ButtonSize, DangerPrimaryTheme, KeystrokeSource,
@@ -6950,12 +6950,15 @@ impl CodeReviewView {
         ctx: &mut ViewContext<Self>,
     ) {
         let settings = EditorSettings::as_ref(ctx);
-        let target = resolve_file_target_with_editor_choice(
+        let target = resolve_file_target_with_options(
             &full_path,
-            *settings.open_code_panels_file_editor,
-            *settings.prefer_markdown_viewer,
-            *settings.open_file_layout,
-            None,
+            FileOpenOptions {
+                editor_choice: *settings.open_code_panels_file_editor,
+                prefer_markdown_viewer: *settings.prefer_markdown_viewer,
+                default_layout: *settings.open_file_layout,
+                layout: None,
+                additional_text_file_patterns: &settings.additional_text_file_patterns,
+            },
         );
 
         send_telemetry_from_ctx!(

@@ -1093,6 +1093,8 @@ impl ProgrammingLanguage {
                 "elixir" => Some("exs"),
                 "scala" => Some("scala"),
                 "sql" => Some("sql"),
+                "makefile" | "make" => Some("mk"),
+                "justfile" | "just" => Some("just"),
                 "objective-c" | "objc" => Some("m"),
                 "starlark" => Some("bzl"),
                 "xml" => Some("xml"),

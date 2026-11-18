@@ -1,11 +1,13 @@
+mod embedded;
 mod queries;
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arborium::tree_sitter::{InputEdit, Parser, Tree};
+use embedded::{BuildTokenKind, HandlebarsTokenKind, build_tokens, handlebars_tokens, regions_for};
 use futures::stream::AbortHandle;
-use languages::Language;
+use languages::{EmbeddedLanguage, Language};
 use parking_lot::Mutex;
 use queries::highlight_query::HighlightQuery;
 pub use queries::highlight_query::{ColorMap, TextSlice};
@@ -39,6 +41,18 @@ pub enum DecorationStateEvent {
 struct LanguageQueries {
     language: Arc<Language>,
     syntax_query: HighlightQuery,
+    embedded_highlighters: Vec<EmbeddedHighlighter>,
+}
+
+enum EmbeddedHighlighter {
+    TreeSitter {
+        language: EmbeddedLanguage,
+        grammar: arborium::tree_sitter::Language,
+        syntax_query: HighlightQuery,
+        highlight_query: arborium::tree_sitter::Query,
+    },
+    Handlebars,
+    BuildFile(EmbeddedLanguage),
 }
 
 /// Single-entry cache for highlight queries.
@@ -105,9 +119,37 @@ impl SyntaxTreeState {
     }
 
     pub fn set_language(&mut self, language: Arc<Language>) {
+        // The order is the precedence order: later highlighters are applied
+        // later and therefore win when their ranges overlap earlier ones.
+        let embedded_highlighters = language
+            .embedded_languages
+            .iter()
+            .filter_map(|embedded_language| match embedded_language {
+                EmbeddedLanguage::Css => {
+                    let grammar = arborium::get_language("css")?;
+                    let highlight_query = arborium::tree_sitter::Query::new(
+                        &grammar,
+                        arborium::lang_css::HIGHLIGHTS_QUERY,
+                    )
+                    .expect("arborium CSS highlight query should be valid");
+                    Some(EmbeddedHighlighter::TreeSitter {
+                        language: *embedded_language,
+                        syntax_query: HighlightQuery::new(&highlight_query, self.color_map.clone()),
+                        grammar,
+                        highlight_query,
+                    })
+                }
+                EmbeddedLanguage::Handlebars => Some(EmbeddedHighlighter::Handlebars),
+                EmbeddedLanguage::Makefile | EmbeddedLanguage::Justfile => {
+                    Some(EmbeddedHighlighter::BuildFile(*embedded_language))
+                }
+            })
+            .collect();
+
         self.language_queries = Some(LanguageQueries {
             syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map.clone()),
             language,
+            embedded_highlighters,
         });
     }
 
@@ -193,6 +235,90 @@ impl SyntaxTreeState {
                 );
                 for (highlight_range, color) in highlights.iter() {
                     combined_highlights.insert(highlight_range.clone(), *color);
+                }
+            }
+        }
+
+        if !language_queries.embedded_highlighters.is_empty() {
+            let source = buffer.as_ref(ctx).text().into_string();
+            for embedded_highlighter in &language_queries.embedded_highlighters {
+                match embedded_highlighter {
+                    EmbeddedHighlighter::TreeSitter {
+                        language,
+                        grammar,
+                        syntax_query,
+                        highlight_query,
+                    } => {
+                        for region in regions_for(&source, *language) {
+                            let embedded_source = &source[region.clone()];
+                            let mut parser = Parser::new();
+                            parser
+                                .set_language(grammar)
+                                .expect("incompatible embedded grammar");
+                            let Some(tree) = parser.parse(embedded_source, None) else {
+                                continue;
+                            };
+                            let highlights = syntax_query.get_highlighted_chunks_from_text(
+                                highlight_query,
+                                embedded_source,
+                                &source,
+                                region.start,
+                                &tree,
+                            );
+                            for (highlight_range, color) in highlights.iter() {
+                                if ranges.iter().any(|range| {
+                                    range.start <= highlight_range.end
+                                        && highlight_range.start <= range.end
+                                }) {
+                                    combined_highlights.insert(highlight_range.clone(), *color);
+                                }
+                            }
+                        }
+                    }
+                    EmbeddedHighlighter::Handlebars => {
+                        for token in handlebars_tokens(&source) {
+                            let color = match token.kind {
+                                HandlebarsTokenKind::Delimiter => self.color_map.comment_color,
+                                HandlebarsTokenKind::Keyword => self.color_map.keyword_color,
+                                HandlebarsTokenKind::Helper => self.color_map.function_color,
+                                HandlebarsTokenKind::Path => self.color_map.property_color,
+                                HandlebarsTokenKind::String => self.color_map.string_color,
+                                HandlebarsTokenKind::Number => self.color_map.number_color,
+                                HandlebarsTokenKind::Comment => self.color_map.comment_color,
+                            };
+                            let char_start = source[..token.range.start].chars().count();
+                            let char_end = source[..token.range.end].chars().count();
+                            let highlight_range =
+                                CharOffset::from(char_start)..CharOffset::from(char_end);
+                            if ranges.iter().any(|range| {
+                                range.start <= highlight_range.end
+                                    && highlight_range.start <= range.end
+                            }) {
+                                combined_highlights.insert(highlight_range, color);
+                            }
+                        }
+                    }
+                    EmbeddedHighlighter::BuildFile(language) => {
+                        for token in build_tokens(&source, *language) {
+                            let color = match token.kind {
+                                BuildTokenKind::Comment => self.color_map.comment_color,
+                                BuildTokenKind::Function => self.color_map.function_color,
+                                BuildTokenKind::Keyword => self.color_map.keyword_color,
+                                BuildTokenKind::Property => self.color_map.property_color,
+                                BuildTokenKind::Punctuation => self.color_map.comment_color,
+                            };
+                            let char_start = source[..token.range.start].chars().count();
+                            let char_end = source[..token.range.end].chars().count();
+                            let highlight_range =
+                                CharOffset::from(char_start)..CharOffset::from(char_end);
+                            if ranges.iter().any(|range| {
+                                range.start <= highlight_range.end
+                                    && highlight_range.start <= range.end
+                            }) {
+                                combined_highlights.insert(highlight_range, color);
+                            }
+                        }
+                    }
                 }
             }
         }

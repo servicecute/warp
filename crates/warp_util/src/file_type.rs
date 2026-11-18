@@ -44,86 +44,118 @@ pub fn is_file_content_binary(path: impl AsRef<Path>) -> bool {
     is_buffer_binary(&buffer[..n])
 }
 
+/// Returns whether `path` has an extension that is always treated as binary.
+///
+/// This is kept separate from content inspection so callers that support
+/// configurable text-file patterns can avoid allowing a user pattern to
+/// override a known binary format.
+pub fn is_known_binary_extension(path: impl AsRef<Path>) -> bool {
+    path.as_ref()
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "jpg"
+                    | "jpeg"
+                    | "png"
+                    | "gif"
+                    | "bmp"
+                    | "tiff"
+                    | "tif"
+                    | "webp"
+                    | "ico"
+                    | "pdf"
+                    | "doc"
+                    | "docx"
+                    | "xls"
+                    | "xlsx"
+                    | "ppt"
+                    | "pptx"
+                    | "odt"
+                    | "ods"
+                    | "odp"
+                    | "zip"
+                    | "tar"
+                    | "gz"
+                    | "bz2"
+                    | "xz"
+                    | "7z"
+                    | "rar"
+                    | "dmg"
+                    | "iso"
+                    | "img"
+                    | "exe"
+                    | "msi"
+                    | "deb"
+                    | "rpm"
+                    | "app"
+                    | "pkg"
+                    | "bin"
+                    | "so"
+                    | "dll"
+                    | "dylib"
+                    | "mp3"
+                    | "mp4"
+                    | "avi"
+                    | "mov"
+                    | "wmv"
+                    | "flv"
+                    | "mkv"
+                    | "wav"
+                    | "flac"
+                    | "ogg"
+                    | "woff"
+                    | "woff2"
+                    | "ttf"
+                    | "otf"
+                    | "eot"
+                    | "db"
+                    | "sqlite"
+                    | "sqlite3"
+                    | "pyc"
+                    | "pyo"
+                    | "class"
+                    | "jar"
+            )
+        })
+}
+
 /// Checks if a file is a binary file that should not be opened in Warp.
-/// Note that we only check the file extension, not the file content.
-/// Returns true for common binary file extensions like images, videos, executables, etc.
+///
+/// Known binary extensions are rejected immediately. Known text filenames and
+/// extensions remain text even when the path does not exist yet. For unknown
+/// paths, inspect the file content when available so extensionless UTF-8 files
+/// can still use Warp's editor without treating every unfamiliar name as
+/// binary.
 pub fn is_binary_file(path: impl AsRef<Path>) -> bool {
     let path = path.as_ref();
+    if is_known_binary_extension(path) {
+        return true;
+    }
+
     match path.extension() {
         Some(ext) => {
-            if let Some(ext) = ext.to_str() {
-                matches!(
-                    ext.to_lowercase().as_str(),
-                    "jpg"
-                        | "jpeg"
-                        | "png"
-                        | "gif"
-                        | "bmp"
-                        | "tiff"
-                        | "tif"
-                        | "webp"
-                        | "ico"
-                        | "pdf"
-                        | "doc"
-                        | "docx"
-                        | "xls"
-                        | "xlsx"
-                        | "ppt"
-                        | "pptx"
-                        | "odt"
-                        | "ods"
-                        | "odp"
-                        | "zip"
-                        | "tar"
-                        | "gz"
-                        | "bz2"
-                        | "xz"
-                        | "7z"
-                        | "rar"
-                        | "dmg"
-                        | "iso"
-                        | "img"
-                        | "exe"
-                        | "msi"
-                        | "deb"
-                        | "rpm"
-                        | "app"
-                        | "pkg"
-                        | "bin"
-                        | "so"
-                        | "dll"
-                        | "dylib"
-                        | "mp3"
-                        | "mp4"
-                        | "avi"
-                        | "mov"
-                        | "wmv"
-                        | "flv"
-                        | "mkv"
-                        | "wav"
-                        | "flac"
-                        | "ogg"
-                        | "woff"
-                        | "woff2"
-                        | "ttf"
-                        | "otf"
-                        | "eot"
-                        | "db"
-                        | "sqlite"
-                        | "sqlite3"
-                        | "pyc"
-                        | "pyo"
-                        | "class"
-                        | "jar"
-                )
+            if ext.to_str().is_some() {
+                if is_text_file(path.to_string_lossy().as_ref()) {
+                    return false;
+                }
+
+                is_file_content_binary(path)
             } else {
-                false
+                is_file_content_binary(path)
             }
         }
         None => path
             .to_str()
-            .map(|path| !is_text_file(path))
-            .unwrap_or_default(),
+            .map(|path| {
+                if is_text_file(path) {
+                    false
+                } else {
+                    is_file_content_binary(path)
+                }
+            })
+            .unwrap_or(true),
     }
 }
 
@@ -164,6 +196,16 @@ pub fn is_jupyter_notebook_file(path: impl AsRef<Path>) -> bool {
 /// # Returns
 /// `true` if the file is likely to be a text file, `false` otherwise
 fn is_text_file(filename: &str) -> bool {
+    let basename = Path::new(filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(filename)
+        .to_lowercase();
+
+    if basename.starts_with(".env.") {
+        return true;
+    }
+
     // Use mime_guess for initial detection
     let mime = mime_guess::from_path(filename).first_or_octet_stream();
 
@@ -278,7 +320,7 @@ fn is_extensionless_text_file(filename: &str) -> bool {
         "news" | "todo" | "fixme" | "bugs" | "issues" | "release" |
         "history" | "version" | "notice" | "disclaimer" |
         // Build files
-        "makefile" | "dockerfile" | "containerfile" | "rakefile" |
+        "makefile" | "justfile" | "dockerfile" | "containerfile" | "rakefile" |
         "gemfile" | "podfile" | "cartfile" | "brewfile" |
         // Config files
         "procfile" | "profile" | "bashrc" | "zshrc" | "vimrc" |
@@ -289,12 +331,15 @@ fn is_extensionless_text_file(filename: &str) -> bool {
     ) ||
     // Handle dot-prefixed config files
     basename.starts_with('.') && matches!(basename.as_str(),
-        ".gitignore" | ".gitattributes" | ".editorconfig" |
+        ".gitignore" | ".gitmodules" | ".gitattributes" | ".editorconfig" |
+        ".dockerignore" | ".containerignore" | ".agent-session-identity" |
+        ".justfile" | ".ignore" | ".fdignore" | ".rgignore" |
         ".prettierrc" | ".eslintrc" | ".stylelintrc" | ".babelrc" |
         ".postcssrc" | ".browserslistrc" | ".npmrc" | ".yarnrc" |
         ".nvmrc" | ".rvmrc" | ".env" | ".envrc" | ".profile" |
         ".bashrc" | ".zshrc" | ".vimrc" | ".tmux.conf"
     )
+    || basename.starts_with(".env.")
 }
 
 #[cfg(test)]

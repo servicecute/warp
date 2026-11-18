@@ -100,6 +100,16 @@ define_settings_group!(EditorSettings, settings: [
         toml_path: "code.editor.open_file_layout",
         description: "The layout used when opening files in the editor.",
     },
+    additional_text_file_patterns: AdditionalTextFilePatterns {
+        type: Vec<String>,
+        default: vec![],
+        supported_platforms: SupportedPlatforms::ALL,
+        sync_to_cloud: SyncToCloud::Never,
+        surface: settings::SettingSurfaces::GUI,
+        private: false,
+        toml_path: "code.editor.additional_text_file_patterns",
+        description: "Additional file names or simple glob patterns to treat as text in Warp's editor.",
+    },
     prefer_markdown_viewer: PreferMarkdownViewer {
         type: bool,
         default: true,

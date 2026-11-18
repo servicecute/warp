@@ -1,0 +1,15 @@
+<section class="order-summary">
+  {{!-- A block can contain helpers, paths, literals, and nested markup. --}}
+  {{#if order.customer}}
+    <h1>Hello {{order.customer.name}}</h1>
+  {{else}}
+    <h1>Hello valued customer</h1>
+  {{/if}}
+
+  {{#each order.items}}
+    <p>{{name}} × {{quantity}} — {{lookup ../prices sku}}</p>
+  {{/each}}
+
+  {{> order-footer order=order}}
+  {{{trusted_html}}}
+</section>
