@@ -671,6 +671,7 @@ dependencies = [
  "arborium-css",
  "arborium-dockerfile",
  "arborium-elixir",
+ "arborium-gleam",
  "arborium-go",
  "arborium-hcl",
  "arborium-highlight",
@@ -776,6 +777,17 @@ name = "arborium-elixir"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e83642c9163db915db820ba0d8e0546d76f30c4c4afedc04d4108c6a496834d9"
+dependencies = [
+ "arborium-sysroot",
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "arborium-gleam"
+version = "2.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0600fb8dda9204a851d0bb47af207cd5a6b08fab5fafd9d219c2cd6fa4c7acbf"
 dependencies = [
  "arborium-sysroot",
  "cc",
@@ -7638,7 +7650,10 @@ name = "languages"
 version = "0.0.0"
 dependencies = [
  "arborium",
+ "dirs 6.0.0",
  "lazy_static",
+ "log",
+ "regex",
  "rust-embed 8.7.2",
  "serde",
  "serde_yaml 0.8.26",

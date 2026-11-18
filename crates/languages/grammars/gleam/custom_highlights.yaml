@@ -1,0 +1,13 @@
+- scope: annotation.marker.gleam
+  pattern: "@(codegen|rename_all|tag|tag_value|tag_casing|deny_unknown|skip_if_null|newtype|extern|encode|decode|version|changelog|json|msgpack|firestore|field|constructor)"
+  capture: 0
+- scope: annotation.namespace.gleam
+  pattern: "(?:@codegen\\s+|@field\\s+[A-Za-z_][A-Za-z0-9_-]*\\s+)(json|msgpack|firestore|firestore_with)"
+  capture: 1
+- scope: annotation.key.gleam
+  pattern: "(?:@json|@msgpack|@firestore|@field|@constructor)\\s+([A-Za-z_][A-Za-z0-9_-]*)"
+  capture: 1
+- scope: annotation.string.gleam
+  pattern: "\\\"(?:\\\\.|[^\\\"])*\\\""
+- scope: annotation.number.gleam
+  pattern: "\\b[0-9]+(?:\\.[0-9]+)?\\b"

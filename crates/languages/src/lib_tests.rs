@@ -2,7 +2,11 @@ use std::path::Path;
 
 use warp_util::standardized_path::StandardizedPath;
 
-use crate::{SUPPORTED_LANGUAGES, language_by_filename, language_by_local_filename, load_language};
+use crate::{
+    SUPPORTED_LANGUAGES, UserLanguageConfig, UserLanguageDefinition, language_by_filename,
+    language_by_local_filename, load_language, user_highlight_color_overrides_for,
+    user_language_for_extension,
+};
 
 /// Validate that every supported language can be loaded successfully.
 /// This catches invalid node types, syntax errors, and other issues in .scm query files
@@ -94,4 +98,74 @@ fn markdown_extensions_resolve_to_markdown() {
             "{filename} should resolve to Markdown",
         );
     }
+}
+
+#[test]
+fn gleam_extension_resolves_to_gleam() {
+    let path = StandardizedPath::try_new("/tmp/app.gleam").expect("test path should be absolute");
+    let language =
+        language_by_filename(&path).expect("`.gleam` files should resolve to a language");
+    assert_eq!(language.display_name(), "Gleam");
+}
+
+#[test]
+fn local_gleam_extension_resolves_to_gleam() {
+    let language = language_by_local_filename(Path::new("app.gleam"))
+        .expect("`.gleam` files should resolve to a language");
+    assert_eq!(language.display_name(), "Gleam");
+}
+
+#[test]
+fn user_extension_alias_resolves_to_configured_language() {
+    let config = UserLanguageConfig {
+        languages: vec![UserLanguageDefinition {
+            language: "gleam".into(),
+            extensions: vec![".gleamx".into()],
+            ..Default::default()
+        }],
+    };
+
+    let language = user_language_for_extension("gleamx", &config)
+        .expect("configured extension aliases should resolve");
+    assert_eq!(language.display_name(), "Gleam");
+}
+
+#[test]
+fn user_scope_colors_are_collected_from_config() {
+    let config = UserLanguageConfig {
+        languages: vec![UserLanguageDefinition {
+            language: "gleam".into(),
+            colors: [("annotation.marker.gleam".into(), "#ffaff3".into())]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        }],
+    };
+
+    let colors = user_highlight_color_overrides_for(&config);
+    assert_eq!(
+        colors.get("annotation.marker.gleam"),
+        Some(&"#ffaff3".into())
+    );
+}
+
+#[test]
+fn gleam_codegen_fixture_highlights_known_annotations_only() {
+    let language = load_language("gleam").expect("Gleam should load");
+    let custom_highlighting = language
+        .custom_highlighting
+        .expect("Gleam should have codegen highlighting");
+    let fixture = include_str!("../grammars/gleam/codegen_fixture.gleam");
+    let matches = custom_highlighting.matches(fixture);
+    let matched_text: Vec<_> = matches
+        .iter()
+        .map(|matched| &fixture[matched.range.clone()])
+        .collect();
+
+    assert!(matched_text.contains(&"@codegen"));
+    assert!(matched_text.contains(&"@json"));
+    assert!(matched_text.contains(&"@firestore"));
+    assert!(matched_text.contains(&"tag_style"));
+    assert!(matched_text.contains(&"\"adjacent\""));
+    assert!(!matched_text.contains(&"@unknown"));
 }

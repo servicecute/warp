@@ -106,7 +106,7 @@ impl SyntaxTreeState {
 
     pub fn set_language(&mut self, language: Arc<Language>) {
         self.language_queries = Some(LanguageQueries {
-            syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map),
+            syntax_query: HighlightQuery::new(&language.highlight_query, self.color_map.clone()),
             language,
         });
     }
@@ -178,6 +178,22 @@ impl SyntaxTreeState {
             // Merge the highlights into the combined map
             for (highlight_range, color) in highlights.iter() {
                 combined_highlights.insert(highlight_range.clone(), *color);
+            }
+
+            if let (Some(custom_query), Some(custom_highlighting)) = (
+                language_queries.language.custom_highlight_query.as_ref(),
+                language_queries.language.custom_highlighting.as_ref(),
+            ) {
+                let highlights = language_queries.syntax_query.get_custom_highlighted_chunks(
+                    range.clone(),
+                    custom_query,
+                    custom_highlighting,
+                    buffer.as_ref(ctx),
+                    tree,
+                );
+                for (highlight_range, color) in highlights.iter() {
+                    combined_highlights.insert(highlight_range.clone(), *color);
+                }
             }
         }
 
