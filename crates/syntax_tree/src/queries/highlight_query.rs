@@ -85,6 +85,57 @@ impl HighlightQuery {
         range_map
     }
 
+    pub fn get_highlighted_chunks_from_text(
+        &self,
+        query: &Query,
+        embedded_text: &str,
+        source_text: &str,
+        source_byte_offset: usize,
+        tree: &Tree,
+    ) -> RangeMap<CharOffset, ColorU> {
+        let mut range_map = RangeMap::new();
+        let mut cursor = QueryCursor::new();
+        let mut captures =
+            cursor.captures(query, tree.root_node(), TextSlice(embedded_text.as_bytes()));
+
+        while let Some(matches) = captures.next() {
+            for cap in matches.0.captures {
+                let insertion_range = cap.node.byte_range();
+                let global_start = source_byte_offset + insertion_range.start;
+                let global_end = source_byte_offset + insertion_range.end;
+                let Some(color) = self
+                    .highlight_map
+                    .get(cap.index as usize)
+                    .and_then(|inner| *inner)
+                else {
+                    continue;
+                };
+                let Some(char_start) = source_text
+                    .get(..global_start)
+                    .map(str::chars)
+                    .map(Iterator::count)
+                else {
+                    continue;
+                };
+                let Some(char_end) = source_text
+                    .get(..global_end)
+                    .map(str::chars)
+                    .map(Iterator::count)
+                else {
+                    continue;
+                };
+                if char_start < char_end {
+                    range_map.insert(
+                        CharOffset::from(char_start)..CharOffset::from(char_end),
+                        color,
+                    );
+                }
+            }
+        }
+
+        range_map
+    }
+
     pub fn get_custom_highlighted_chunks(
         &self,
         range: Range<CharOffset>,
@@ -118,14 +169,10 @@ impl HighlightQuery {
                     let Some(color) = self.color_for_scope(&custom_match.scope) else {
                         continue;
                     };
-                    let char_start = ByteOffset::from(
-                        (node_range.start + custom_match.range.start).saturating_sub(1),
-                    )
-                    .to_buffer_char_offset(buffer);
-                    let char_end = ByteOffset::from(
-                        (node_range.start + custom_match.range.end).saturating_sub(1),
-                    )
-                    .to_buffer_char_offset(buffer);
+                    let char_start = ByteOffset::from(node_range.start + custom_match.range.start)
+                        .to_buffer_char_offset(buffer);
+                    let char_end = ByteOffset::from(node_range.start + custom_match.range.end)
+                        .to_buffer_char_offset(buffer);
                     if char_start < char_end {
                         range_map.insert(char_start..char_end, color);
                     }
@@ -135,7 +182,6 @@ impl HighlightQuery {
 
         range_map
     }
-
     fn color_for_scope(&self, scope: &str) -> Option<ColorU> {
         self.color_map
             .custom_highlight_colors

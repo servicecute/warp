@@ -1,0 +1,23 @@
+// A representative Gradle build script.
+plugins {
+    id 'java-library'
+}
+
+def versionName = "1.2.3"
+group = 'com.example'
+version = versionName
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api("org.example:library:$versionName")
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+}
+
+tasks.register('hello') {
+    doLast {
+        println "Hello, ${project.name}!"
+    }
+}

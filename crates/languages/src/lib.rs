@@ -25,8 +25,9 @@ lazy_static! {
     static ref USER_LANGUAGE_CONFIG: UserLanguageConfig = load_user_language_config();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 37] = [
+pub const SUPPORTED_LANGUAGES: [&str; 46] = [
     "rust",
+    "erlang",
     "golang",
     "yaml",
     "python",
@@ -35,10 +36,15 @@ pub const SUPPORTED_LANGUAGES: [&str; 37] = [
     "typescript",
     "tsx",
     "java",
+    "groovy",
+    "xcode-project",
     "cpp",
     "shell",
     "csharp",
     "html",
+    "mjml",
+    "handlebars",
+    "handlebars-json",
     "css",
     "c",
     "json",
@@ -56,6 +62,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 37] = [
     "dart",
     "gleam",
     "sql",
+    "surrealql",
     "starlark",
     "objective-c",
     "xml",
@@ -63,6 +70,8 @@ pub const SUPPORTED_LANGUAGES: [&str; 37] = [
     "dockerfile",
     "nix",
     "markdown",
+    "makefile",
+    "justfile",
 ];
 
 /// Registry that holds all of the supported languages.
@@ -171,6 +180,13 @@ fn language_by_filename_parts(
     filename: Option<&str>,
     extension: Option<&str>,
 ) -> Option<Arc<Language>> {
+    if let Some(filename) = filename {
+        let lower = filename.to_ascii_lowercase();
+        if lower.ends_with(".json.hbs") || lower.ends_with(".json.handlebars") {
+            return language_by_name("handlebars-json");
+        }
+    }
+
     // First check for specific filenames that don't use extensions.
     if let Some(filename) = filename {
         match filename {
@@ -189,6 +205,15 @@ fn language_by_filename_parts(
             // Dockerfiles
             "Dockerfile" | "Containerfile" | "dockerfile" | "containerfile" => {
                 return language_by_name("dockerfile");
+            }
+            "Makefile" | "makefile" | "GNUmakefile" => {
+                return language_by_name("makefile");
+            }
+            "Justfile" | "justfile" | ".justfile" => {
+                return language_by_name("justfile");
+            }
+            "Jenkinsfile" => {
+                return language_by_name("groovy");
             }
             _ => {
                 // Also match Dockerfile variants like Dockerfile.dev, Dockerfile.prod
@@ -213,11 +238,15 @@ fn language_by_filename_parts(
         "jsx" => language_by_name("jsx"),
         "tsx" => language_by_name("tsx"),
         "ts" | "cts" | "mts" => language_by_name("typescript"),
-        "java" | "groovy" | "gvy" | "gy" | "gsh" => language_by_name("java"),
+        "java" => language_by_name("java"),
+        "gradle" | "groovy" | "gvy" | "gy" | "gsh" => language_by_name("groovy"),
+        "xcodeproj" | "pbxproj" => language_by_name("xcode-project"),
         "cpp" | "cxx" | "cc" | "h" | "hh" | "hpp" | "hxx" | "H" | "h++" => language_by_name("cpp"),
         "sh" | "zsh" | "bash" | "command" => language_by_name("shell"),
         "cs" => language_by_name("csharp"),
         "html" | "htm" => language_by_name("html"),
+        "mjml" => language_by_name("mjml"),
+        "hbs" | "handlebars" => language_by_name("handlebars"),
         "css" => language_by_name("css"),
         "c" => language_by_name("c"),
         "json" => language_by_name("json"),
@@ -233,14 +262,18 @@ fn language_by_filename_parts(
         "scala" | "sbt" | "sc" => language_by_name("scala"),
         "ps1" | "pwsh" => language_by_name("powershell"),
         "ex" | "exs" => language_by_name("elixir"),
+        "erl" | "hrl" => language_by_name("erlang"),
         "dart" => language_by_name("dart"),
         "gleam" => language_by_name("gleam"),
         "sql" => language_by_name("sql"),
+        "surql" => language_by_name("surrealql"),
         "bzl" | "bazel" => language_by_name("starlark"),
         "m" | "mm" => language_by_name("objective-c"),
         "xml" => language_by_name("xml"),
         "vue" => language_by_name("vue"),
         "dockerfile" => language_by_name("dockerfile"),
+        "mk" | "mak" | "makefile" => language_by_name("makefile"),
+        "just" => language_by_name("justfile"),
         "md" | "markdown" => language_by_name("markdown"),
         _ => None,
     }
@@ -269,6 +302,19 @@ pub struct Language {
     pub custom_highlighting: Option<CustomHighlighting>,
     /// Display name for the language.
     pub display_name: String,
+    /// Languages embedded in the source that need a secondary highlighter.
+    ///
+    /// Entries are ordered from lowest to highest precedence. Later entries
+    /// are applied after earlier entries when ranges overlap.
+    pub embedded_languages: Vec<EmbeddedLanguage>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmbeddedLanguage {
+    Css,
+    Handlebars,
+    Makefile,
+    Justfile,
 }
 
 impl Language {
@@ -300,8 +346,13 @@ fn to_arborium_name(lang: &str) -> &str {
         "shell" => "bash",
         "csharp" => "c-sharp",
         "jsx" => "javascript",
+        "mjml" => "html",
+        "handlebars" => "html",
+        "handlebars-json" => "json",
         "objective-c" => "objc",
         "sql" => "sql",
+        "surrealql" => "surrealql",
+        "makefile" | "justfile" => "bash",
         other => other,
     }
 }
@@ -318,10 +369,15 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "typescript" => Some(&arborium::lang_typescript::HIGHLIGHTS_QUERY),
         "tsx" => Some(&arborium::lang_tsx::HIGHLIGHTS_QUERY),
         "java" => Some(arborium::lang_java::HIGHLIGHTS_QUERY),
+        "groovy" => Some(include_str!("../grammars/groovy/highlights.scm")),
+        "xcode-project" => Some(include_str!("../grammars/xcode-project/highlights.scm")),
         "cpp" => Some(&arborium::lang_cpp::HIGHLIGHTS_QUERY),
         "shell" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         "csharp" => Some(arborium::lang_c_sharp::HIGHLIGHTS_QUERY),
         "html" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "mjml" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "handlebars" => Some(arborium::lang_html::HIGHLIGHTS_QUERY),
+        "handlebars-json" => Some(arborium::lang_json::HIGHLIGHTS_QUERY),
         "css" => Some(arborium::lang_css::HIGHLIGHTS_QUERY),
         "c" => Some(arborium::lang_c::HIGHLIGHTS_QUERY),
         "json" => Some(arborium::lang_json::HIGHLIGHTS_QUERY),
@@ -346,13 +402,24 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "vue" => Some(&arborium::lang_vue::HIGHLIGHTS_QUERY),
         "dockerfile" => Some(arborium::lang_dockerfile::HIGHLIGHTS_QUERY),
         "markdown" => Some(arborium::lang_markdown::HIGHLIGHTS_QUERY),
+        "makefile" | "justfile" => Some(arborium::lang_bash::HIGHLIGHTS_QUERY),
         _ => None,
     }
 }
 
 fn load_language(lang: &str) -> Option<Language> {
     let arborium_name = to_arborium_name(lang);
-    let grammar = arborium::get_language(arborium_name)?;
+    let grammar = if lang == "erlang" {
+        arborium_erlang::language().into()
+    } else if lang == "surrealql" {
+        tree_sitter_surrealql::LANGUAGE.into()
+    } else if lang == "groovy" {
+        dekobon_tree_sitter_groovy::LANGUAGE.into()
+    } else if lang == "xcode-project" {
+        tree_sitter_property_list::LANGUAGE.into()
+    } else {
+        arborium::get_language(arborium_name)?
+    };
 
     let config_path = [lang, "config.yaml"].join("\\");
     let config = load_yaml(&config_path);
@@ -368,9 +435,16 @@ fn load_language(lang: &str) -> Option<Language> {
         })
         .collect();
 
-    let highlight_query_str = get_arborium_highlight_query(lang)?;
-    let highlight_query = Query::new(&grammar, highlight_query_str)
-        .expect("arborium highlight query should be valid");
+    let highlight_query = if lang == "erlang" {
+        Query::new(&grammar, arborium_erlang::HIGHLIGHTS_QUERY)
+            .expect("Arborium Erlang highlight query should be valid")
+    } else if lang == "surrealql" {
+        load_query("surrealql/highlights.scm", &grammar)
+            .expect("SurrealQL highlight query should be embedded")
+    } else {
+        let highlight_query_str = get_arborium_highlight_query(lang)?;
+        Query::new(&grammar, highlight_query_str).expect("arborium highlight query should be valid")
+    };
 
     let indents_query_path = [lang, "indents.scm"].join("\\");
     let indents_query = load_query(&indents_query_path, &grammar);
@@ -392,6 +466,15 @@ fn load_language(lang: &str) -> Option<Language> {
         custom_highlight_query,
         custom_highlighting,
         display_name: config.display_name,
+        embedded_languages: match lang {
+            "mjml" => vec![EmbeddedLanguage::Css, EmbeddedLanguage::Handlebars],
+            "html" | "json" | "handlebars" | "handlebars-json" => {
+                vec![EmbeddedLanguage::Handlebars]
+            }
+            "makefile" => vec![EmbeddedLanguage::Makefile],
+            "justfile" => vec![EmbeddedLanguage::Justfile],
+            _ => Vec::new(),
+        },
     })
 }
 

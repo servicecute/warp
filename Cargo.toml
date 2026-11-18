@@ -343,6 +343,10 @@ arborium = { version = "2", default-features = false, features = [
   "lang-dockerfile",
   "lang-markdown",
 ] }
+arborium-erlang = "=2.13.0"
+dekobon-tree-sitter-groovy = "0.6.0"
+tree-sitter-property-list = "0.1.2"
+tree-sitter-surrealql = { package = "surrealguard-tree-sitter-surrealql", version = "0.5.3" }
 unicode-general-category = "1.1.0"
 unicode-linebreak = "0.1.5"
 unicode-segmentation = "1.11.0"

@@ -796,6 +796,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arborium-erlang"
+version = "2.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88226203e876a69206463ef08508a9f987f455321956eeb81e3e568de2ec9a1d"
+dependencies = [
+ "arborium-sysroot",
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "arborium-gleam"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4230,6 +4241,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26bf8fc351c5ed29b5c2f0cbbac1b209b74f60ecd62e675a998df72c49af5204"
 
 [[package]]
+name = "dekobon-tree-sitter-groovy"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2d72848614192db59dd415975736160b17728facd9ec4ad6677acc50a650b79"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "deltae"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7662,6 +7683,8 @@ name = "languages"
 version = "0.0.0"
 dependencies = [
  "arborium",
+ "arborium-erlang",
+ "dekobon-tree-sitter-groovy",
  "dirs 6.0.0",
  "lazy_static",
  "log",
@@ -7669,6 +7692,8 @@ dependencies = [
  "rust-embed 8.7.2",
  "serde",
  "serde_yaml 0.8.26",
+ "surrealguard-tree-sitter-surrealql",
+ "tree-sitter-property-list",
  "warp_editor",
  "warp_util",
 ]
@@ -13376,6 +13401,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "surrealguard-tree-sitter-surrealql"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ab7d8bd1d10b442ff2e8295a0299bbc445d6b9f67b4b74c8cea2de99facf65"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "svgtypes"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14640,9 +14675,19 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-language"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
+
+[[package]]
+name = "tree-sitter-property-list"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8ddffe35a0e5eeeadf13ff7350af564c6e73993a24db62caee1822b185c2600"
+checksum = "6ad09719888e9c014134db049654ecf736e12d8fe0c07597b026da1a25ad3572"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree_magic_mini"
