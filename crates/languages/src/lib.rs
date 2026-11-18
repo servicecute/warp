@@ -25,7 +25,7 @@ lazy_static! {
     static ref USER_LANGUAGE_CONFIG: UserLanguageConfig = load_user_language_config();
 }
 
-pub const SUPPORTED_LANGUAGES: [&str; 36] = [
+pub const SUPPORTED_LANGUAGES: [&str; 37] = [
     "rust",
     "golang",
     "yaml",
@@ -53,6 +53,7 @@ pub const SUPPORTED_LANGUAGES: [&str; 36] = [
     "scala",
     "powershell",
     "elixir",
+    "dart",
     "gleam",
     "sql",
     "starlark",
@@ -232,6 +233,7 @@ fn language_by_filename_parts(
         "scala" | "sbt" | "sc" => language_by_name("scala"),
         "ps1" | "pwsh" => language_by_name("powershell"),
         "ex" | "exs" => language_by_name("elixir"),
+        "dart" => language_by_name("dart"),
         "gleam" => language_by_name("gleam"),
         "sql" => language_by_name("sql"),
         "bzl" | "bazel" => language_by_name("starlark"),
@@ -335,6 +337,7 @@ fn get_arborium_highlight_query(lang: &str) -> Option<&str> {
         "scala" => Some(arborium::lang_scala::HIGHLIGHTS_QUERY),
         "powershell" => Some(arborium::lang_powershell::HIGHLIGHTS_QUERY),
         "elixir" => Some(arborium::lang_elixir::HIGHLIGHTS_QUERY),
+        "dart" => Some(arborium::lang_dart::HIGHLIGHTS_QUERY),
         "gleam" => Some(arborium::lang_gleam::HIGHLIGHTS_QUERY),
         "sql" => Some(arborium::lang_sql::HIGHLIGHTS_QUERY),
         "starlark" => Some(arborium::lang_starlark::HIGHLIGHTS_QUERY),
